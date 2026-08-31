@@ -775,21 +775,44 @@ function haversine(lat1, lng1, lat2, lng2) {
 
 async function populateInspectors() {
   const sel = $('#sel-inspector');
-  let list = DEMO.inspectors;
-  if (!CONFIG.DEMO_MODE) {
-    try {
-      const r = await apiGet('inspectors');
-      if (r.ok) { list = r.data; DEMO.inspectors = list; }
-    } catch (e) { console.error(e); }
+  const btn = $('#btn-login');
+
+  if (CONFIG.DEMO_MODE) {
+    DEMO.inspectors.forEach(i => addInspectorOption(sel, i));
+    return;
   }
-  list.forEach(i => {
-    const o = document.createElement('option');
-    o.value = i.id;
-    o.textContent = i.name + (i.gender === 'F' ? ' (מפקחת)' : ' (מפקח)');
-    sel.appendChild(o);
-  });
-  const last = localStorage.getItem(STORAGE.INSPECTOR);
-  if (last) sel.value = last;
+
+  // כשל גלוי. אסור ליפול בשקט לרשימה מקומית —
+  // מפקח שנכנס בזהות שגויה מייצר רשומות על שם מישהו אחר.
+  sel.innerHTML = '<option value="">טוען…</option>';
+  btn.disabled = true;
+  try {
+    const r = await apiGet('inspectors');
+    if (!r.ok) throw new Error(r.error || 'השרת דחה את הבקשה');
+    if (!r.data || !r.data.length) throw new Error('אין מפקחים פעילים בגיליון');
+
+    sel.innerHTML = '<option value="">בחר מהרשימה...</option>';
+    SERVER_INSPECTORS.length = 0;
+    r.data.forEach(i => { SERVER_INSPECTORS.push(i); addInspectorOption(sel, i); });
+    btn.disabled = false;
+
+    const last = localStorage.getItem(STORAGE.INSPECTOR);
+    if (last && SERVER_INSPECTORS.some(i => i.id === last)) sel.value = last;
+  } catch (e) {
+    sel.innerHTML = '<option value="">—</option>';
+    btn.disabled = true;
+    const box = $('#login-err');
+    box.innerHTML = 'לא ניתן לטעון את רשימת המפקחים מהשרת.<br>' +
+      '<span style="font-weight:400">' + esc(e.message) + '</span>';
+    box.style.display = 'block';
+  }
+}
+
+function addInspectorOption(sel, i) {
+  const o = document.createElement('option');
+  o.value = i.id;
+  o.textContent = i.name + (i.gender === 'F' ? ' (מפקחת)' : ' (מפקח)');
+  sel.appendChild(o);
 }
 
 function doLogin() {
@@ -797,7 +820,9 @@ function doLogin() {
   const err = $('#login-err');
   if (!id) { err.textContent = 'בחר שם מהרשימה'; err.style.display = 'block'; return; }
   err.style.display = 'none';
-  state.inspector = DEMO.inspectors.find(i => i.id === id);
+  const src = CONFIG.DEMO_MODE ? DEMO.inspectors : SERVER_INSPECTORS;
+  state.inspector = src.find(i => i.id === id);
+  if (!state.inspector) { toast('מפקח לא מזוהה', 'error'); return; }
   localStorage.setItem(STORAGE.INSPECTOR, id);
   $('#btn-logout').style.display = '';
   const h = new Date().getHours();
