@@ -1,0 +1,1237 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1">
+<meta name="theme-color" content="#2b8c7e">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="בקרת סייעים">
+<title>בקרת סייעים — הדגמה</title>
+
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%232b8c7e'/%3E%3Ctext x='50' y='70' font-size='58' text-anchor='middle' fill='white'%3E%E2%9C%93%3C/text%3E%3C/svg%3E">
+
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+<style>
+:root {
+  --teal: #2b8c7e;
+  --teal-dark: #1f6b60;
+  --teal-light: #e8f5f2;
+  --gold: #c6a636;
+  --gold-dark: #8a6d10;
+  --gold-light: #faf3dd;
+  --navy: #152350;
+  --navy-light: #e7eaf3;
+  --bg: #f5f7fa;
+  --surface: #ffffff;
+  --border: #e1e5eb;
+  --text: #1f2937;
+  --text-muted: #6b7280;
+  --success: #16a34a;
+  --success-light: #dcfce7;
+  --warning: #eab308;
+  --warning-light: #fef9c3;
+  --danger: #dc2626;
+  --danger-light: #fee2e2;
+  --info: #2563eb;
+  --info-light: #dbeafe;
+  --shadow-sm: 0 1px 2px rgba(0,0,0,.05);
+  --shadow: 0 2px 8px rgba(0,0,0,.08);
+  --shadow-lg: 0 4px 20px rgba(0,0,0,.12);
+  --radius: 12px;
+  --radius-sm: 8px;
+  --radius-lg: 20px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+html, body {
+  font-family: 'Heebo', system-ui, -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  font-size: 16px;
+  line-height: 1.5;
+  overscroll-behavior-y: none;
+}
+body { padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
+
+button { font-family: inherit; font-size: inherit; cursor: pointer; border: none; }
+input, textarea, select { font-family: inherit; font-size: inherit; }
+
+/* ============ HEADER ============ */
+.app-header {
+  background: linear-gradient(135deg, var(--navy) 0%, #1e3270 100%);
+  color: white; padding: 16px 20px; box-shadow: var(--shadow);
+  position: sticky; top: 0; z-index: 100;
+}
+.app-header .title-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.app-title { font-size: 18px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+.app-title .icon { font-size: 22px; }
+.header-btn {
+  background: rgba(255,255,255,.15); color: white; padding: 8px 12px;
+  border-radius: var(--radius-sm); font-size: 13px; font-weight: 500;
+  display: inline-flex; align-items: center; gap: 6px; transition: background .15s;
+}
+.header-btn:active { background: rgba(255,255,255,.25); }
+.sync-pill {
+  display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px;
+  border-radius: 999px; font-size: 12px; font-weight: 500; background: rgba(255,255,255,.18);
+}
+.sync-pill .dot { width: 8px; height: 8px; border-radius: 50%; background: #22d3ee; box-shadow: 0 0 8px #22d3ee; }
+.sync-pill.offline .dot { background: #f87171; box-shadow: 0 0 8px #f87171; }
+.sync-pill.pending .dot { background: var(--gold); box-shadow: 0 0 8px var(--gold); animation: pulse 1.5s infinite; }
+@keyframes pulse { 0%,100% { opacity:1 } 50% { opacity:.4 } }
+
+/* ============ SCREENS ============ */
+.screen { display: none; min-height: calc(100vh - 80px); }
+.screen.active { display: block; }
+.container { max-width: 820px; margin: 0 auto; padding: 16px; }
+
+/* ============ LOGIN ============ */
+#screen-login .container {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  min-height: calc(100vh - 80px); padding: 40px 20px;
+}
+.login-card {
+  background: var(--surface); border-radius: var(--radius-lg); box-shadow: var(--shadow-lg);
+  padding: 32px 24px; width: 100%; max-width: 400px; text-align: center;
+}
+.login-icon {
+  width: 72px; height: 72px;
+  background: linear-gradient(135deg, var(--teal) 0%, var(--teal-dark) 100%);
+  border-radius: 20px; display: flex; align-items: center; justify-content: center;
+  margin: 0 auto 20px; font-size: 38px; color: white;
+  box-shadow: 0 8px 20px rgba(43,140,126,.3);
+}
+.login-title { font-size: 22px; font-weight: 700; color: var(--navy); margin-bottom: 6px; }
+.login-subtitle { color: var(--text-muted); margin-bottom: 28px; font-size: 14px; }
+.field-label { display: block; text-align: right; font-size: 13px; font-weight: 600; color: var(--text-muted); margin-bottom: 8px; }
+.form-input, .form-select {
+  width: 100%; padding: 14px 16px; border: 2px solid var(--border); border-radius: var(--radius);
+  font-size: 16px; background: var(--surface); color: var(--text); text-align: right;
+  transition: border-color .15s, box-shadow .15s;
+}
+.form-input:focus, .form-select:focus { outline: none; border-color: var(--teal); box-shadow: 0 0 0 3px var(--teal-light); }
+.btn-primary {
+  width: 100%; background: var(--teal); color: white; padding: 16px 20px;
+  border-radius: var(--radius); font-size: 16px; font-weight: 600; margin-top: 16px;
+  transition: background .15s, transform .05s;
+}
+.btn-primary:active { background: var(--teal-dark); transform: scale(.98); }
+.btn-primary:disabled { background: #cbd5e1; cursor: not-allowed; transform: none; }
+.login-footer { margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--border); font-size: 12px; color: var(--text-muted); }
+
+/* ============ STATS ============ */
+.stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 14px; }
+.stat-card {
+  background: var(--surface); border-radius: var(--radius); padding: 10px 6px;
+  text-align: center; box-shadow: var(--shadow-sm); border: 1px solid var(--border);
+}
+.stat-card .num { font-size: 20px; font-weight: 700; color: var(--navy); line-height: 1; }
+.stat-card .label { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+.stat-card.done .num { color: var(--success); }
+.stat-card.flag .num { color: var(--danger); }
+.stat-card.mine .num { color: var(--teal); }
+
+/* ============ HOME ============ */
+.hero-card {
+  background: var(--surface); border-radius: var(--radius); border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm); padding: 28px 20px; text-align: center;
+}
+.hero-card .greet { font-size: 15px; color: var(--text-muted); }
+.hero-card .who { font-size: 24px; font-weight: 700; color: var(--navy); margin: 4px 0 20px; }
+.hero-note {
+  margin-top: 16px; font-size: 13px; color: var(--text-muted); line-height: 1.6;
+  background: var(--bg); border-radius: var(--radius-sm); padding: 12px 14px; text-align: right;
+}
+
+/* ============ ASSIGNMENT ============ */
+.detail-header {
+  background: var(--surface); border-radius: var(--radius); border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm); padding: 20px 16px; text-align: center; margin-bottom: 12px;
+}
+.detail-header .inst-name { font-size: 21px; font-weight: 700; color: var(--navy); line-height: 1.3; }
+.detail-header .inst-addr { font-size: 15px; color: var(--text); margin-top: 6px; }
+.detail-header .inst-id { font-size: 12px; color: var(--text-muted); margin-top: 6px; font-variant-numeric: tabular-nums; }
+.type-badge {
+  display: inline-block; margin-top: 10px; padding: 4px 12px; border-radius: 999px;
+  font-size: 13px; font-weight: 600; background: var(--navy-light); color: var(--navy);
+}
+
+.card {
+  background: var(--surface); border-radius: var(--radius); border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm); padding: 16px; margin-bottom: 12px;
+}
+.card-label {
+  font-size: 13px; font-weight: 600; color: var(--text-muted);
+  margin-bottom: 12px; display: flex; align-items: center; gap: 6px;
+}
+
+.btn-nav {
+  width: 100%; background: var(--navy); color: white; padding: 15px;
+  border-radius: var(--radius); font-size: 16px; font-weight: 600;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+}
+.btn-nav:active { background: #1e3270; transform: scale(.98); }
+
+.gps-box {
+  padding: 14px; border-radius: var(--radius-sm); font-size: 14px;
+  background: var(--info-light); color: #1e40af; line-height: 1.6;
+}
+.gps-box.ok { background: var(--success-light); color: #14532d; }
+.gps-box.bad { background: var(--warning-light); color: var(--gold-dark); }
+.gps-box.err { background: var(--danger-light); color: #7f1d1d; }
+.gps-line { display: flex; justify-content: space-between; gap: 10px; }
+.gps-line + .gps-line { margin-top: 6px; padding-top: 6px; border-top: 1px solid rgba(0,0,0,.07); }
+.gps-line .v { font-weight: 700; font-variant-numeric: tabular-nums; }
+
+.btn-arrive {
+  width: 100%; background: var(--teal); color: white; padding: 22px;
+  border-radius: var(--radius); font-size: 20px; font-weight: 700; margin-top: 4px;
+  transition: background .15s, transform .05s;
+}
+.btn-arrive:active { background: var(--teal-dark); transform: scale(.98); }
+.btn-arrive:disabled { background: #cbd5e1; color: #94a3b8; cursor: not-allowed; transform: none; }
+
+.timer-strip {
+  display: flex; justify-content: center; gap: 6px; align-items: baseline;
+  font-size: 13px; color: var(--text-muted); margin-bottom: 12px;
+}
+.timer-strip .t { font-weight: 700; color: var(--navy); font-variant-numeric: tabular-nums; }
+
+/* ============ SUBJECT CARD ============ */
+.subject-card {
+  background: linear-gradient(135deg, var(--teal) 0%, var(--teal-dark) 100%);
+  color: white; border-radius: var(--radius); padding: 20px 16px; margin-bottom: 12px;
+  box-shadow: 0 6px 18px rgba(43,140,126,.28);
+}
+.subject-card .kicker { font-size: 12px; opacity: .85; font-weight: 500; }
+.subject-card .name { font-size: 24px; font-weight: 700; margin: 2px 0 12px; }
+.subject-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.subject-grid .cell { background: rgba(255,255,255,.14); border-radius: var(--radius-sm); padding: 9px 11px; }
+.subject-grid .cell.wide { grid-column: 1 / -1; }
+.subject-grid .k { font-size: 11px; opacity: .82; }
+.subject-grid .v { font-size: 15px; font-weight: 600; margin-top: 1px; }
+
+/* ============ QUESTIONS ============ */
+.q-block { background: var(--surface); border-radius: var(--radius); border: 1px solid var(--border); box-shadow: var(--shadow-sm); padding: 16px; margin-bottom: 12px; }
+.q-block.hidden { display: none; }
+.q-title { font-size: 16px; font-weight: 700; color: var(--navy); margin-bottom: 4px; }
+.q-help { font-size: 13px; color: var(--text-muted); margin-bottom: 12px; line-height: 1.5; }
+.q-help.strong { background: var(--warning-light); color: var(--gold-dark); padding: 9px 12px; border-radius: var(--radius-sm); font-weight: 500; }
+
+.opt-list { display: flex; flex-direction: column; gap: 8px; }
+.opt {
+  display: flex; align-items: center; gap: 11px; padding: 14px;
+  border: 2px solid var(--border); border-radius: var(--radius); background: var(--surface);
+  text-align: right; width: 100%; transition: all .12s; line-height: 1.4;
+}
+.opt:active { transform: scale(.99); }
+.opt .mark {
+  width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--border);
+  flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+  font-size: 13px; color: transparent;
+}
+.opt .txt { flex: 1; font-size: 15px; font-weight: 500; }
+.opt .tag { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; flex-shrink: 0; }
+.opt.selected { border-color: var(--teal); background: var(--teal-light); }
+.opt.selected .mark { background: var(--teal); border-color: var(--teal); color: white; }
+.opt.selected .txt { color: var(--teal-dark); font-weight: 600; }
+.opt.selected.is-flag { border-color: var(--danger); background: var(--danger-light); }
+.opt.selected.is-flag .mark { background: var(--danger); border-color: var(--danger); }
+.opt.selected.is-flag .txt { color: #7f1d1d; }
+.tag-ok { background: var(--success-light); color: #14532d; }
+.tag-part { background: var(--gold-light); color: var(--gold-dark); }
+.tag-bad { background: var(--danger-light); color: #7f1d1d; }
+
+.sub-input { margin-top: 10px; }
+.sub-input.hidden { display: none; }
+textarea.form-input { min-height: 84px; resize: vertical; line-height: 1.5; }
+
+/* ============ SAVE BAR ============ */
+.save-bar {
+  position: fixed; bottom: 0; right: 0; left: 0; background: var(--surface);
+  border-top: 1px solid var(--border); padding: 12px 16px;
+  padding-bottom: calc(12px + env(safe-area-inset-bottom));
+  display: flex; gap: 10px; box-shadow: 0 -2px 12px rgba(0,0,0,.07); z-index: 90;
+}
+.save-bar .btn-save {
+  flex: 1; background: var(--teal); color: white; padding: 16px;
+  border-radius: var(--radius); font-size: 17px; font-weight: 700;
+}
+.save-bar .btn-save:active { background: var(--teal-dark); }
+.save-bar .btn-save:disabled { background: #cbd5e1; color: #94a3b8; }
+.save-bar .btn-cancel {
+  background: var(--surface); color: var(--text-muted); border: 1.5px solid var(--border);
+  padding: 16px 20px; border-radius: var(--radius); font-weight: 600;
+}
+#screen-check .container { padding-bottom: 100px; }
+
+/* ============ NEXT ACTION ============ */
+.saved-banner {
+  background: linear-gradient(135deg, var(--success) 0%, #15803d 100%);
+  color: white; border-radius: var(--radius); padding: 26px 20px; text-align: center;
+  margin-bottom: 20px; position: relative; box-shadow: 0 6px 18px rgba(22,163,74,.28);
+}
+.saved-banner .check-circle {
+  width: 54px; height: 54px; border-radius: 50%; background: rgba(255,255,255,.22);
+  display: flex; align-items: center; justify-content: center; font-size: 28px; margin: 0 auto 12px;
+}
+.saved-banner .sub { font-size: 13px; opacity: .9; }
+.saved-banner .main { font-size: 21px; font-weight: 700; margin: 4px 0; }
+.saved-banner .verdict { font-size: 14px; font-weight: 600; margin-top: 8px; background: rgba(255,255,255,.2); display: inline-block; padding: 4px 14px; border-radius: 999px; }
+.saved-banner.is-flag { background: linear-gradient(135deg, var(--danger) 0%, #991b1b 100%); box-shadow: 0 6px 18px rgba(220,38,38,.28); }
+
+.next-label { font-size: 14px; font-weight: 600; color: var(--text-muted); margin-bottom: 10px; }
+.next-opt {
+  width: 100%; display: flex; align-items: center; gap: 14px; text-align: right;
+  background: var(--surface); border: 1.5px solid var(--border); border-radius: var(--radius);
+  padding: 15px 16px; margin-bottom: 10px; transition: transform .05s;
+}
+.next-opt:active { transform: scale(.99); }
+.next-opt.primary { background: var(--teal); border-color: var(--teal); color: white; }
+.next-opt .ic {
+  width: 40px; height: 40px; border-radius: 50%; background: var(--teal-light); color: var(--teal-dark);
+  display: flex; align-items: center; justify-content: center; font-size: 19px; flex-shrink: 0;
+}
+.next-opt.primary .ic { background: rgba(255,255,255,.2); color: white; }
+.next-opt .body { flex: 1; min-width: 0; }
+.next-opt .t { font-size: 16px; font-weight: 700; }
+.next-opt .s { font-size: 12.5px; opacity: .75; margin-top: 2px; }
+
+/* ============ TOAST ============ */
+.toast {
+  position: fixed; bottom: 90px; right: 50%; transform: translateX(50%) translateY(20px);
+  background: var(--navy); color: white; padding: 13px 22px; border-radius: 999px;
+  font-size: 14.5px; font-weight: 500; box-shadow: var(--shadow-lg);
+  opacity: 0; pointer-events: none; transition: all .25s; z-index: 200; max-width: 90vw; text-align: center;
+}
+.toast.show { opacity: 1; transform: translateX(50%) translateY(0); }
+.toast.success { background: var(--success); }
+.toast.error { background: var(--danger); }
+
+.empty-state {
+  background: var(--surface); border-radius: var(--radius); padding: 44px 20px;
+  text-align: center; color: var(--text-muted); border: 1px solid var(--border);
+}
+.empty-state .icon { font-size: 44px; margin-bottom: 12px; opacity: .5; }
+
+.demo-strip {
+  background: var(--gold-light); border: 1px solid #f0dd9e; color: var(--gold-dark);
+  padding: 9px 14px; border-radius: var(--radius-sm); font-size: 12.5px;
+  margin-bottom: 12px; text-align: center; font-weight: 500;
+}
+@media (min-width: 768px) { .container { padding: 24px 16px; } }
+</style>
+</head>
+<body>
+
+<header class="app-header">
+  <div class="title-row">
+    <div class="app-title"><span class="icon">✓</span><span>בקרת סייעים</span></div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <span class="sync-pill" id="sync-pill"><span class="dot"></span><span id="sync-text">מקוון</span></span>
+      <button class="header-btn" id="btn-logout" onclick="logout()" style="display:none">יציאה</button>
+    </div>
+  </div>
+</header>
+<div style="background:#c6a636;color:#3d3000;text-align:center;padding:7px 14px;font-size:13px;font-weight:600">
+  הדגמה · נתונים מדומים · אין צורך להיות במוסד
+</div>
+
+<!-- ══════════ LOGIN ══════════ -->
+<section class="screen active" id="screen-login">
+  <div class="container">
+    <div class="login-card">
+      <div class="login-icon">✓</div>
+      <div class="login-title">בקרת סייעים</div>
+      <div class="login-subtitle">עיריית בני ברק · <span style="color:#8a6d10;font-weight:600">הדגמה</span></div>
+      <label class="field-label" for="sel-inspector">שם המפקח</label>
+      <select class="form-select" id="sel-inspector"><option value="">בחר מהרשימה...</option></select>
+      <button class="btn-primary" id="btn-login" onclick="doLogin()">כניסה</button>
+      <div class="login-footer">גרסה 0.9 · הדגמה עצמאית · פועל גם ללא אינטרנט</div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════ HOME ══════════ -->
+<section class="screen" id="screen-home">
+  <div class="container">
+    <div class="stats-row">
+      <div class="stat-card"><div class="num" id="st-target">0</div><div class="label">יעדים היום</div></div>
+      <div class="stat-card done"><div class="num" id="st-done">0</div><div class="label">הושלמו</div></div>
+      <div class="stat-card flag"><div class="num" id="st-flag">0</div><div class="label">חריגות</div></div>
+      <div class="stat-card mine"><div class="num" id="st-avg">—</div><div class="label">זמן ממוצע</div></div>
+    </div>
+    <div class="hero-card">
+      <div class="greet" id="greet-time">בוקר טוב</div>
+      <div class="who" id="greet-name">—</div>
+      <button class="btn-primary" onclick="requestAssignment()" id="btn-dispatch">קבל יעד</button>
+      <div class="hero-note">
+        היעד נחשף רק כשהוא מוקצה, ושם הסייע נחשף רק לאחר אימות הגעה במקום.
+        אין רשימה מראש ואין אפשרות לבחור יעד.
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════ ASSIGNMENT ══════════ -->
+<section class="screen" id="screen-assign">
+  <div class="container">
+    <div class="timer-strip">מאז קבלת היעד: <span class="t" id="timer-travel">00:00</span></div>
+    <div class="detail-header">
+      <div class="inst-name" id="as-name">—</div>
+      <div class="inst-addr" id="as-addr">—</div>
+      <div class="inst-id" id="as-id">—</div>
+      <div class="type-badge" id="as-type">—</div>
+    </div>
+    <div class="card">
+      <div class="card-label">📍 מיקום</div>
+      <button class="btn-nav" onclick="openNav()">🧭 נווט ליעד</button>
+    </div>
+    <div class="card">
+      <div class="card-label">🛰️ אימות הגעה</div>
+      <div class="gps-box" id="gps-box">מאתר מיקום…</div>
+    </div>
+    <button class="btn-arrive" id="btn-arrive" onclick="confirmArrival()" >הגעתי</button>
+    <div style="text-align:center;margin-top:14px">
+      <button class="header-btn" style="background:var(--surface);color:var(--text-muted);border:1.5px solid var(--border)" onclick="reportBlocked()">לא ניתן להגיע / סורבה כניסה</button>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════ CHECK ══════════ -->
+<section class="screen" id="screen-check">
+  <div class="container">
+    <div class="timer-strip">מאז חשיפת השם: <span class="t" id="timer-reveal">00:00</span></div>
+
+    <div class="subject-card">
+      <div class="kicker" id="sc-inst">—</div>
+      <div class="name" id="sc-name">—</div>
+      <div class="subject-grid">
+        <div class="cell"><div class="k">סוג הסייע</div><div class="v" id="sc-type">—</div></div>
+        <div class="cell"><div class="k">כיתה</div><div class="v" id="sc-class">—</div></div>
+        <div class="cell wide"><div class="k">תלמיד משויך</div><div class="v" id="sc-student">—</div></div>
+        <div class="cell"><div class="k">שעות משובצות</div><div class="v" id="sc-hours">—</div></div>
+        <div class="cell"><div class="k">החתים כניסה</div><div class="v" id="sc-clock">—</div></div>
+      </div>
+    </div>
+
+    <!-- Q1 -->
+    <div class="q-block" id="q1">
+      <div class="q-title">1. מצב הסייע</div>
+      <div class="q-help">מה מצבו של הסייע ברגע זה</div>
+      <div class="opt-list" id="q1-opts"></div>
+      <div class="sub-input hidden" id="q1-sub">
+        <input class="form-input" id="q1-text" placeholder="">
+      </div>
+    </div>
+
+    <!-- Q2 -->
+    <div class="q-block hidden" id="q2">
+      <div class="q-title">2. מה הסייע עושה בפועל</div>
+      <div class="q-help">הפעילות העיקרית בזמן התצפית. דווח מה ראית — המערכת קובעת אם זו חריגה.</div>
+      <div class="opt-list" id="q2-opts"></div>
+      <div class="sub-input hidden" id="q2-sub">
+        <input class="form-input" id="q2-text" placeholder="פרט את הפעילות">
+      </div>
+    </div>
+
+    <!-- Q3 -->
+    <div class="q-block hidden" id="q3">
+      <div class="q-title">3. מצב התלמיד המשויך</div>
+      <div class="q-help strong">המידע חייב להגיע מיומן הכיתה או מהמחנכת. לא מהסייע.</div>
+      <div class="opt-list" id="q3-opts"></div>
+      <div class="sub-input hidden" id="q3-sub">
+        <input class="form-input" id="q3-text" placeholder="שעת השחרור">
+      </div>
+    </div>
+
+    <!-- Q4 -->
+    <div class="q-block hidden" id="q4">
+      <div class="q-title">4. אימות מול הצוות</div>
+      <div class="q-help" id="q4-help">מי מסר לך את המידע</div>
+      <div class="opt-list" id="q4-opts"></div>
+      <div class="sub-input" id="q4-sub">
+        <input class="form-input" id="q4-text" placeholder="שם ותפקיד של מוסר המידע">
+      </div>
+    </div>
+
+    <!-- Q5 -->
+    <div class="q-block hidden" id="q5">
+      <div class="q-title">5. הערות</div>
+      <div class="q-help">אופציונלי</div>
+      <textarea class="form-input" id="q5-text" placeholder="כל דבר שראית וחשוב שיירשם"></textarea>
+    </div>
+  </div>
+  <div class="save-bar">
+    <button class="btn-cancel" onclick="abortCheck()">ביטול</button>
+    <button class="btn-save" id="btn-save" onclick="saveCheck()" disabled>שמור דיווח</button>
+  </div>
+</section>
+
+<!-- ══════════ NEXT ══════════ -->
+<section class="screen" id="screen-next">
+  <div class="container">
+    <div class="saved-banner" id="next-banner">
+      <div class="check-circle">✓</div>
+      <div class="sub">הדיווח נשמר</div>
+      <div class="main" id="next-name">—</div>
+      <div class="verdict" id="next-verdict">—</div>
+    </div>
+    <div class="next-label">מה עכשיו?</div>
+    <div id="next-options"></div>
+  </div>
+</section>
+
+<div class="toast" id="toast"></div>
+
+<script>
+'use strict';
+
+/* ═══════════════════════════════════════════════════════════
+   CONFIG
+   ═══════════════════════════════════════════════════════════ */
+const CONFIG = {
+  API_URL: 'https://script.google.com/macros/s/AKfycby_m54KMPtMeNNlikGUYpCPTRRgWMDQy-3EfsVF0CkwIvmlIk1PaQljq1lJwDmYYk3J/exec',
+  DEMO_MODE: true,
+  TEST_MODE: true,              // מדלג על אימות המיקום
+  VERSION: '0.9',
+  CACHE_PREFIX: 'sayaControl_v1_',
+  GEOFENCE_METERS: 75,          // רדיוס אישור הגעה
+  GPS_MIN_ACCURACY: 30,         // דיוק גרוע מזה = חסימה
+  GPS_TIMEOUT_MS: 12000,
+  SYNC_INTERVAL_MS: 30000
+};
+
+const STORAGE = {
+  INSPECTOR: CONFIG.CACHE_PREFIX + 'inspector',
+  SESSION:   CONFIG.CACHE_PREFIX + 'session'
+};
+
+/* ═══════════════════════════════════════════════════════════
+   CLASSIFICATION — מטריצת ההתאמה
+   מוגדרת פעם אחת. המפקח לא מחליט מה חריגה.
+   ok = תואם | partial = חלקי | flag = חריגה
+   ═══════════════════════════════════════════════════════════ */
+const ACTIVITIES = [
+  { id: 'with_student_class',  label: 'צמוד לתלמיד המשויך, בכיתה' },
+  { id: 'with_student_out',    label: 'צמוד לתלמיד מחוץ לכיתה — הפסקה / טיפול / שירותים' },
+  { id: 'nearby_available',    label: 'בקרבת התלמיד וזמין, לא בליווי פעיל' },
+  { id: 'in_class_not_student',label: 'בכיתה, אך לא עם התלמיד המשויך' },
+  { id: 'other_students',      label: 'מסייע לתלמידים אחרים' },
+  { id: 'teaching',            label: 'מלמד כיתה / משמש כמורה' },
+  { id: 'admin',               label: 'תפקיד מנהלי / מזכירות' },
+  { id: 'idle',                label: 'לא בפעילות — חדר מורים / מסדרון' },
+  { id: 'other',               label: 'פעילות אחרת', needsText: true }
+];
+
+const MATRIX = {
+  // סוג סייע → פעילות → תוצאה
+  'צמוד אישי': { with_student_class:'ok', with_student_out:'ok', nearby_available:'partial',
+                 in_class_not_student:'flag', other_students:'flag', teaching:'flag',
+                 admin:'flag', idle:'flag', other:'partial' },
+  'רפואי':     { with_student_class:'ok', with_student_out:'ok', nearby_available:'ok',
+                 in_class_not_student:'partial', other_students:'flag', teaching:'flag',
+                 admin:'flag', idle:'flag', other:'partial' },
+  'כיתתי':     { with_student_class:'ok', with_student_out:'ok', nearby_available:'ok',
+                 in_class_not_student:'ok', other_students:'ok', teaching:'flag',
+                 admin:'flag', idle:'flag', other:'partial' },
+  'שילוב':     { with_student_class:'ok', with_student_out:'ok', nearby_available:'ok',
+                 in_class_not_student:'ok', other_students:'ok', teaching:'flag',
+                 admin:'flag', idle:'flag', other:'partial' }
+};
+
+const PRESENCE = [
+  { id: 'found',      label: 'נמצא במוסד',                         result: 'continue' },
+  { id: 'not_found',  label: 'לא נמצא במוסד',                      result: 'flag' },
+  { id: 'substitute', label: 'ממלא מקום נמצא במקומו', needsText: true, placeholder: 'שם ממלא המקום', result: 'partial' },
+  { id: 'approved',   label: 'היעדרות מאושרת מראש', needsText: true, placeholder: 'מי אישר, ומתי', result: 'partial' },
+  { id: 'blocked',    label: 'לא ניתן לברר — אין שיתוף פעולה',     result: 'partial' }
+];
+
+const STUDENT = [
+  { id: 'present',   label: 'נוכח בבית הספר' },
+  { id: 'absent',    label: 'נעדר היום' },
+  { id: 'released',  label: 'שוחרר מוקדם', needsText: true, placeholder: 'שעת השחרור' },
+  { id: 'unknown',   label: 'אינו רשום / לא ידוע לצוות', flag: true }
+];
+
+const VERIFY = [
+  { id: 'teacher',   label: 'מחנכת הכיתה' },
+  { id: 'principal', label: 'מנהל / סגן' },
+  { id: 'office',    label: 'מזכירות' },
+  { id: 'direct',    label: 'תצפית ישירה בלבד', weak: true }
+];
+
+/* ═══════════════════════════════════════════════════════════
+   DEMO DATA
+   ═══════════════════════════════════════════════════════════ */
+const DEMO = {
+  inspectors: [{"id": "INS01", "name": "זאב שטרן", "gender": "M"}, {"id": "INS02", "name": "פנחס פוגל", "gender": "M"}, {"id": "INS03", "name": "מרדכי קליין", "gender": "M"}, {"id": "INS04", "name": "שרה ברנר", "gender": "F"}, {"id": "INS05", "name": "חיה נוישטט", "gender": "F"}, {"id": "INS06", "name": "עדינה שוורץ", "gender": "F"}],
+  institutions: [{"id": "INST-001", "symbol": "744901", "name": "גן אורות", "kind": "F", "type": "גן ילדים", "addr": "קהילות יעקב 94, בני ברק", "lat": 32.089212, "lng": 34.835803}, {"id": "INST-002", "symbol": "624787", "name": "בית יעקב נחלת בת", "kind": "F", "type": "יסודי בנות", "addr": "חזון איש 42, בני ברק", "lat": 32.092313, "lng": 34.840619}, {"id": "INST-003", "symbol": "860223", "name": "בית יעקב מורשה", "kind": "F", "type": "יסודי בנות", "addr": "חזון איש 67, בני ברק", "lat": 32.091318, "lng": 34.840136}, {"id": "INST-004", "symbol": "724542", "name": "ת\"ת קול יעקב", "kind": "M", "type": "יסודי בנים", "addr": "חתם סופר 84, בני ברק", "lat": 32.078522, "lng": 34.829175}, {"id": "INST-005", "symbol": "835828", "name": "גן כרמים", "kind": "F", "type": "גן ילדים", "addr": "כהנמן 90, בני ברק", "lat": 32.09498, "lng": 34.833575}, {"id": "INST-006", "symbol": "675326", "name": "גן שושנים", "kind": "F", "type": "גן ילדים", "addr": "יהודה הנשיא 107, בני ברק", "lat": 32.094216, "lng": 34.820717}, {"id": "INST-007", "symbol": "419350", "name": "ת\"ת אור החיים", "kind": "M", "type": "יסודי בנים", "addr": "נחמיה 46, בני ברק", "lat": 32.086443, "lng": 34.823918}, {"id": "INST-008", "symbol": "709736", "name": "בית יעקב תפארת", "kind": "F", "type": "יסודי בנות", "addr": "יהודה הנשיא 50, בני ברק", "lat": 32.087788, "lng": 34.831775}, {"id": "INST-009", "symbol": "804282", "name": "ת\"ת עטרת שלמה", "kind": "M", "type": "יסודי בנים", "addr": "ז'בוטינסקי 117, בני ברק", "lat": 32.078236, "lng": 34.823202}, {"id": "INST-010", "symbol": "436369", "name": "ת\"ת זכרון יעקב", "kind": "M", "type": "יסודי בנים", "addr": "עזרא 48, בני ברק", "lat": 32.083031, "lng": 34.839992}, {"id": "INST-011", "symbol": "714127", "name": "ת\"ת נצח ישראל", "kind": "M", "type": "יסודי בנים", "addr": "חתם סופר 50, בני ברק", "lat": 32.091783, "lng": 34.821831}, {"id": "INST-012", "symbol": "864971", "name": "גן אילנות", "kind": "F", "type": "גן ילדים", "addr": "הראשונים 3, בני ברק", "lat": 32.092349, "lng": 34.82133}, {"id": "INST-013", "symbol": "471388", "name": "סמינר דרכי רחל", "kind": "F", "type": "יסודי בנות", "addr": "הרב כהנמן 33, בני ברק", "lat": 32.089114, "lng": 34.821041}, {"id": "INST-014", "symbol": "540322", "name": "בית יעקב מרכז", "kind": "F", "type": "יסודי בנות", "addr": "הרצוג 30, בני ברק", "lat": 32.078032, "lng": 34.838914}, {"id": "INST-015", "symbol": "440467", "name": "ת\"ת יסודי התורה", "kind": "M", "type": "יסודי בנים", "addr": "אהרונוביץ 49, בני ברק", "lat": 32.08177, "lng": 34.823172}, {"id": "INST-016", "symbol": "822336", "name": "גן תפארת", "kind": "F", "type": "גן ילדים", "addr": "רמב\"ם 11, בני ברק", "lat": 32.095684, "lng": 34.838938}, {"id": "INST-017", "symbol": "801917", "name": "ת\"ת שערי דעת", "kind": "M", "type": "יסודי בנים", "addr": "רמב\"ם 27, בני ברק", "lat": 32.083207, "lng": 34.841075}, {"id": "INST-018", "symbol": "701266", "name": "ת\"ת תפארת ציון", "kind": "M", "type": "יסודי בנים", "addr": "גני הדר 109, בני ברק", "lat": 32.087706, "lng": 34.834268}, {"id": "INST-019", "symbol": "882762", "name": "ת\"ת נחלת משה", "kind": "M", "type": "יסודי בנים", "addr": "הרצוג 73, בני ברק", "lat": 32.081686, "lng": 34.840583}, {"id": "INST-020", "symbol": "755277", "name": "ת\"ת דרכי אבות", "kind": "M", "type": "יסודי בנים", "addr": "כהנמן 35, בני ברק", "lat": 32.090432, "lng": 34.841198}, {"id": "INST-021", "symbol": "592358", "name": "ת\"ת אמרי אמת", "kind": "M", "type": "יסודי בנים", "addr": "השומר 120, בני ברק", "lat": 32.094087, "lng": 34.825171}, {"id": "INST-022", "symbol": "584101", "name": "סמינר בית רחל", "kind": "F", "type": "יסודי בנות", "addr": "דנגור 24, בני ברק", "lat": 32.084501, "lng": 34.821983}, {"id": "INST-023", "symbol": "711420", "name": "בית יעקב שירת מרים", "kind": "F", "type": "יסודי בנות", "addr": "הרב שך 119, בני ברק", "lat": 32.080623, "lng": 34.819563}, {"id": "INST-024", "symbol": "552909", "name": "ת\"ת מאור התלמוד", "kind": "M", "type": "יסודי בנים", "addr": "סוקולוב 103, בני ברק", "lat": 32.083424, "lng": 34.832475}, {"id": "INST-025", "symbol": "436542", "name": "גן פרחי חמד", "kind": "F", "type": "גן ילדים", "addr": "דנגור 4, בני ברק", "lat": 32.078061, "lng": 34.83427}, {"id": "INST-026", "symbol": "420074", "name": "ישיבה קטנה אהל תורה", "kind": "M", "type": "יסודי בנים", "addr": "הראשונים 47, בני ברק", "lat": 32.084082, "lng": 34.825439}, {"id": "INST-027", "symbol": "552870", "name": "ת\"ת בני ציון", "kind": "M", "type": "יסודי בנים", "addr": "מהרש\"ל 98, בני ברק", "lat": 32.092733, "lng": 34.829538}, {"id": "INST-028", "symbol": "513961", "name": "גן ניצנים", "kind": "F", "type": "גן ילדים", "addr": "ז'בוטינסקי 96, בני ברק", "lat": 32.083684, "lng": 34.829549}, {"id": "INST-029", "symbol": "449337", "name": "ת\"ת חכמת שלמה", "kind": "M", "type": "יסודי בנים", "addr": "השומר 36, בני ברק", "lat": 32.090684, "lng": 34.819368}, {"id": "INST-030", "symbol": "887123", "name": "בית יעקב אהבת חסד", "kind": "F", "type": "יסודי בנות", "addr": "עזרא 94, בני ברק", "lat": 32.095552, "lng": 34.818549}],
+  roster: [{"inst": "INST-001", "aid": "S-1008", "name": "רחל גולד", "type": "שילוב", "student": "ר. זילברשטיין", "klass": "גן", "hours": "08:00-14:00", "clockIn": "08:57"}, {"inst": "INST-001", "aid": "S-1021", "name": "פייגא שוורץ", "type": "צמוד אישי", "student": "נ. ברקוביץ", "klass": "גן", "hours": "07:45-13:45", "clockIn": "08:30"}, {"inst": "INST-002", "aid": "S-1039", "name": "בתיה רוזנברג", "type": "רפואי", "student": "ד. זילבר", "klass": "ו1", "hours": "08:30-14:30", "clockIn": "08:41"}, {"inst": "INST-002", "aid": "S-1051", "name": "עדינה ברנר", "type": "כיתתי", "student": "כיתה ה1", "klass": "ה1", "hours": "07:45-13:15", "clockIn": "08:48"}, {"inst": "INST-002", "aid": "S-1067", "name": "רחל זילבר", "type": "רפואי", "student": "ז. בלוי", "klass": "ב1", "hours": "07:45-13:15", "clockIn": "07:44"}, {"inst": "INST-003", "aid": "S-1081", "name": "מלכה גרוס", "type": "צמוד אישי", "student": "ע. פוגל", "klass": "ח1", "hours": "08:00-13:30", "clockIn": "07:52"}, {"inst": "INST-003", "aid": "S-1094", "name": "גיטל פרנקל", "type": "צמוד אישי", "student": "ד. מלר", "klass": "ו1", "hours": "08:00-14:00", "clockIn": "07:49"}, {"inst": "INST-004", "aid": "S-1106", "name": "דוד וקסלר", "type": "צמוד אישי", "student": "מ. וקסלר", "klass": "ה2", "hours": "08:00-13:30", "clockIn": "07:33"}, {"inst": "INST-004", "aid": "S-1114", "name": "שמואל שפירא", "type": "רפואי", "student": "ש. הירש", "klass": "ה1", "hours": "07:45-13:15", "clockIn": "07:59"}, {"inst": "INST-005", "aid": "S-1122", "name": "גיטל בלוי", "type": "כיתתי", "student": "כיתה גן", "klass": "גן", "hours": "07:45-13:45", "clockIn": "08:41"}, {"inst": "INST-005", "aid": "S-1133", "name": "חיה אקשטיין", "type": "רפואי", "student": "ח. מזרחי", "klass": "גן", "hours": "07:45-13:45", "clockIn": "08:58"}, {"inst": "INST-006", "aid": "S-1136", "name": "טובה רוטנברג", "type": "רפואי", "student": "ח. פרידמן", "klass": "גן", "hours": "07:30-13:00", "clockIn": "08:54"}, {"inst": "INST-007", "aid": "S-1140", "name": "אהרן הירש", "type": "שילוב", "student": "ח. פרנקל", "klass": "ג1", "hours": "08:30-14:30", "clockIn": "08:33"}, {"inst": "INST-007", "aid": "S-1156", "name": "אברהם דויטש", "type": "שילוב", "student": "ש. ברקוביץ", "klass": "ה1", "hours": "07:30-13:00", "clockIn": "08:57"}, {"inst": "INST-008", "aid": "S-1169", "name": "חיה שוורץ", "type": "צמוד אישי", "student": "ד. זילברשטיין", "klass": "ו1", "hours": "08:00-13:00", "clockIn": "08:31"}, {"inst": "INST-008", "aid": "S-1180", "name": "רחל שפירא", "type": "צמוד אישי", "student": "פ. קליין", "klass": "ד2", "hours": "08:00-13:00", "clockIn": "08:32"}, {"inst": "INST-008", "aid": "S-1199", "name": "זהבה וקסלר", "type": "רפואי", "student": "א. גרוס", "klass": "ג2", "hours": "07:45-13:15", "clockIn": "07:40"}, {"inst": "INST-009", "aid": "S-1206", "name": "שלמה שפירא", "type": "רפואי", "student": "ע. הירש", "klass": "ב1", "hours": "08:00-13:00", "clockIn": "08:59"}, {"inst": "INST-009", "aid": "S-1222", "name": "יצחק גרוס", "type": "רפואי", "student": "ש. בלוי", "klass": "ב1", "hours": "08:30-14:30", "clockIn": "07:40"}, {"inst": "INST-009", "aid": "S-1239", "name": "זאב רוזנברג", "type": "רפואי", "student": "מ. זילבר", "klass": "ב1", "hours": "08:30-14:30", "clockIn": "08:59"}, {"inst": "INST-009", "aid": "S-1242", "name": "משה הרשקוביץ", "type": "צמוד אישי", "student": "מ. גרוס", "klass": "ד2", "hours": "08:30-14:30", "clockIn": "07:39"}, {"inst": "INST-010", "aid": "S-1247", "name": "שמעון פישר", "type": "צמוד אישי", "student": "נ. כ\"ץ", "klass": "ג2", "hours": "07:30-13:00", "clockIn": "08:39"}, {"inst": "INST-010", "aid": "S-1262", "name": "שמעון גרוס", "type": "צמוד אישי", "student": "מ. דויטש", "klass": "ה2", "hours": "08:00-13:30", "clockIn": "07:55"}, {"inst": "INST-011", "aid": "S-1273", "name": "ברוך ברנר", "type": "צמוד אישי", "student": "א. שוורץ", "klass": "ה1", "hours": "08:00-13:00", "clockIn": "07:50"}, {"inst": "INST-011", "aid": "S-1285", "name": "שלמה שטרן", "type": "שילוב", "student": "א. הרשקוביץ", "klass": "ו1", "hours": "08:00-13:30", "clockIn": "07:53"}, {"inst": "INST-011", "aid": "S-1289", "name": "פנחס רוזנברג", "type": "רפואי", "student": "י. גרוס", "klass": "ד2", "hours": "07:30-13:00", "clockIn": "08:45"}, {"inst": "INST-011", "aid": "S-1297", "name": "אהרן נוישטט", "type": "צמוד אישי", "student": "א. פרידמן", "klass": "ב2", "hours": "07:30-13:00", "clockIn": "07:53"}, {"inst": "INST-012", "aid": "S-1312", "name": "מלכה רוטנברג", "type": "רפואי", "student": "ב. נוישטט", "klass": "גן", "hours": "07:30-13:00", "clockIn": "07:32"}, {"inst": "INST-013", "aid": "S-1329", "name": "נחמה בלוי", "type": "רפואי", "student": "ד. הרשקוביץ", "klass": "ב2", "hours": "07:45-13:15", "clockIn": "08:31"}, {"inst": "INST-013", "aid": "S-1344", "name": "טובה זילברשטיין", "type": "רפואי", "student": "ד. כ\"ץ", "klass": "ח1", "hours": "08:00-14:00", "clockIn": "07:53"}, {"inst": "INST-013", "aid": "S-1362", "name": "לאה שפירא", "type": "רפואי", "student": "ח. מזרחי", "klass": "ד2", "hours": "08:00-13:30", "clockIn": "08:56"}, {"inst": "INST-014", "aid": "S-1371", "name": "זהבה גולד", "type": "צמוד אישי", "student": "ר. וייס", "klass": "א1", "hours": "08:00-13:30", "clockIn": "08:44"}, {"inst": "INST-014", "aid": "S-1382", "name": "עדינה גולד", "type": "צמוד אישי", "student": "מ. רוזנברג", "klass": "ד2", "hours": "07:30-13:00", "clockIn": "08:34"}, {"inst": "INST-015", "aid": "S-1394", "name": "מנחם מלר", "type": "רפואי", "student": "א. רוזנברג", "klass": "א2", "hours": "08:00-13:00", "clockIn": "07:59"}, {"inst": "INST-015", "aid": "S-1403", "name": "זאב לנדאו", "type": "רפואי", "student": "א. פרנקל", "klass": "א1", "hours": "08:00-13:00", "clockIn": "07:55"}, {"inst": "INST-015", "aid": "S-1421", "name": "דוד פרנקל", "type": "שילוב", "student": "פ. רוטנברג", "klass": "א1", "hours": "08:30-14:30", "clockIn": "08:40"}, {"inst": "INST-015", "aid": "S-1436", "name": "יוסף מזרחי", "type": "רפואי", "student": "א. אקשטיין", "klass": "א2", "hours": "07:30-13:00", "clockIn": "07:34"}, {"inst": "INST-016", "aid": "S-1445", "name": "יהודית שטרן", "type": "כיתתי", "student": "כיתה גן", "klass": "גן", "hours": "08:00-14:00", "clockIn": "07:50"}, {"inst": "INST-017", "aid": "S-1452", "name": "פנחס כ\"ץ", "type": "צמוד אישי", "student": "מ. וייס", "klass": "ו1", "hours": "08:30-14:30", "clockIn": "08:33"}, {"inst": "INST-017", "aid": "S-1457", "name": "שלמה הירש", "type": "צמוד אישי", "student": "ד. הרשקוביץ", "klass": "ד2", "hours": "08:00-13:00", "clockIn": "07:43"}, {"inst": "INST-018", "aid": "S-1475", "name": "דוד נוישטט", "type": "רפואי", "student": "מ. מלר", "klass": "ד2", "hours": "08:30-14:30", "clockIn": "08:34"}, {"inst": "INST-018", "aid": "S-1482", "name": "אברהם פרידמן", "type": "שילוב", "student": "ש. קליין", "klass": "ו1", "hours": "08:00-14:00", "clockIn": "07:57"}, {"inst": "INST-019", "aid": "S-1491", "name": "יוסף רוטנברג", "type": "צמוד אישי", "student": "מ. מזרחי", "klass": "ד1", "hours": "08:00-13:30", "clockIn": "08:39"}, {"inst": "INST-019", "aid": "S-1507", "name": "חיים פוגל", "type": "כיתתי", "student": "כיתה ו1", "klass": "ו1", "hours": "08:00-14:00", "clockIn": "07:44"}, {"inst": "INST-019", "aid": "S-1522", "name": "שלמה שוורץ", "type": "צמוד אישי", "student": "י. פרידמן", "klass": "ו2", "hours": "08:00-14:00", "clockIn": "07:46"}, {"inst": "INST-019", "aid": "S-1540", "name": "פנחס מזרחי", "type": "כיתתי", "student": "כיתה ב2", "klass": "ב2", "hours": "08:00-14:00", "clockIn": "08:45"}, {"inst": "INST-020", "aid": "S-1549", "name": "אליהו מזרחי", "type": "רפואי", "student": "פ. גולד", "klass": "ד1", "hours": "08:00-14:00", "clockIn": "08:45"}, {"inst": "INST-020", "aid": "S-1553", "name": "ברוך ברנר", "type": "כיתתי", "student": "כיתה ג2", "klass": "ג2", "hours": "07:30-13:00", "clockIn": "08:39"}, {"inst": "INST-020", "aid": "S-1572", "name": "שלמה אקשטיין", "type": "צמוד אישי", "student": "ש. בלוי", "klass": "ו1", "hours": "08:30-14:30", "clockIn": "08:42"}, {"inst": "INST-021", "aid": "S-1580", "name": "יצחק שוורץ", "type": "צמוד אישי", "student": "ש. מלר", "klass": "ה2", "hours": "08:00-13:00", "clockIn": "07:33"}, {"inst": "INST-021", "aid": "S-1597", "name": "שמעון אקשטיין", "type": "צמוד אישי", "student": "נ. וקסלר", "klass": "ב1", "hours": "07:45-13:15", "clockIn": "08:56"}, {"inst": "INST-021", "aid": "S-1600", "name": "חיים אדלר", "type": "צמוד אישי", "student": "י. מזרחי", "klass": "ד1", "hours": "08:00-14:00", "clockIn": "07:50"}, {"inst": "INST-021", "aid": "S-1603", "name": "זאב זילבר", "type": "שילוב", "student": "ש. פישר", "klass": "ד2", "hours": "07:45-13:15", "clockIn": "08:57"}, {"inst": "INST-022", "aid": "S-1620", "name": "דבורה וייס", "type": "צמוד אישי", "student": "ד. שפירא", "klass": "ב1", "hours": "08:00-13:30", "clockIn": "08:35"}, {"inst": "INST-022", "aid": "S-1631", "name": "זהבה רוטנברג", "type": "רפואי", "student": "ט. שטרן", "klass": "ו1", "hours": "08:00-13:00", "clockIn": "07:45"}, {"inst": "INST-022", "aid": "S-1650", "name": "מרים אדלר", "type": "צמוד אישי", "student": "ב. מזרחי", "klass": "א1", "hours": "08:00-13:00", "clockIn": "08:46"}, {"inst": "INST-023", "aid": "S-1659", "name": "חנה שפירא", "type": "צמוד אישי", "student": "ש. מלר", "klass": "ו2", "hours": "08:00-13:30", "clockIn": "08:32"}, {"inst": "INST-023", "aid": "S-1676", "name": "עדינה הרשקוביץ", "type": "צמוד אישי", "student": "ב. לנדאו", "klass": "ו1", "hours": "08:00-13:30", "clockIn": "08:52"}, {"inst": "INST-024", "aid": "S-1684", "name": "אברהם פישר", "type": "כיתתי", "student": "כיתה ד1", "klass": "ד1", "hours": "08:00-13:00", "clockIn": "07:54"}, {"inst": "INST-024", "aid": "S-1697", "name": "שלמה זילברשטיין", "type": "כיתתי", "student": "כיתה ו2", "klass": "ו2", "hours": "08:00-13:00", "clockIn": "08:41"}, {"inst": "INST-025", "aid": "S-1714", "name": "עדינה מלר", "type": "צמוד אישי", "student": "ר. הלוי", "klass": "גן", "hours": "07:45-13:45", "clockIn": "08:56"}, {"inst": "INST-025", "aid": "S-1726", "name": "גיטל פישר", "type": "רפואי", "student": "מ. נוישטט", "klass": "גן", "hours": "07:45-13:45", "clockIn": "08:38"}, {"inst": "INST-025", "aid": "S-1738", "name": "מלכה אדלר", "type": "צמוד אישי", "student": "ע. מזרחי", "klass": "גן", "hours": "07:30-13:00", "clockIn": "08:40"}, {"inst": "INST-026", "aid": "S-1746", "name": "שלמה זילברשטיין", "type": "כיתתי", "student": "כיתה ד2", "klass": "ד2", "hours": "08:00-14:00", "clockIn": "07:48"}, {"inst": "INST-026", "aid": "S-1764", "name": "יצחק רוטנברג", "type": "רפואי", "student": "י. רוטנברג", "klass": "ד1", "hours": "08:30-14:30", "clockIn": "07:45"}, {"inst": "INST-026", "aid": "S-1773", "name": "יצחק שפירא", "type": "רפואי", "student": "ב. פוגל", "klass": "א2", "hours": "08:00-13:00", "clockIn": "08:40"}, {"inst": "INST-027", "aid": "S-1781", "name": "חיים רוזנברג", "type": "רפואי", "student": "ש. בלוי", "klass": "ו1", "hours": "08:00-13:30", "clockIn": "08:44"}, {"inst": "INST-027", "aid": "S-1799", "name": "נחום גרוס", "type": "שילוב", "student": "י. וקסלר", "klass": "ד1", "hours": "07:30-13:00", "clockIn": "08:56"}, {"inst": "INST-027", "aid": "S-1808", "name": "מנחם מזרחי", "type": "כיתתי", "student": "כיתה ד2", "klass": "ד2", "hours": "08:30-14:30", "clockIn": "08:41"}, {"inst": "INST-027", "aid": "S-1822", "name": "יצחק גולד", "type": "רפואי", "student": "מ. אקשטיין", "klass": "ו2", "hours": "08:00-14:00", "clockIn": "08:50"}, {"inst": "INST-028", "aid": "S-1838", "name": "דבורה בלוי", "type": "צמוד אישי", "student": "ש. שוורץ", "klass": "גן", "hours": "08:00-14:00", "clockIn": "08:53"}, {"inst": "INST-029", "aid": "S-1849", "name": "חיים דויטש", "type": "צמוד אישי", "student": "א. שטרן", "klass": "ה1", "hours": "08:00-13:00", "clockIn": "08:41"}, {"inst": "INST-029", "aid": "S-1859", "name": "נפתלי גולד", "type": "כיתתי", "student": "כיתה ו1", "klass": "ו1", "hours": "08:00-13:00", "clockIn": "07:57"}, {"inst": "INST-029", "aid": "S-1873", "name": "אליהו וקסלר", "type": "צמוד אישי", "student": "ח. הירש", "klass": "ה1", "hours": "08:00-13:30", "clockIn": "08:41"}, {"inst": "INST-030", "aid": "S-1884", "name": "בתיה וקסלר", "type": "שילוב", "student": "ע. רוזנברג", "klass": "ז1", "hours": "08:30-14:30", "clockIn": "08:46"}, {"inst": "INST-030", "aid": "S-1893", "name": "לאה לנדאו", "type": "צמוד אישי", "student": "ע. אקשטיין", "klass": "א1", "hours": "08:30-14:30", "clockIn": "07:46"}]
+};
+
+/* ═══════════════════════════════════════════════════════════
+   STATE
+   ═══════════════════════════════════════════════════════════ */
+const state = {
+  inspector: null,
+  assignment: null,      // {institution, dispatchTime}
+  arrival: null,         // {time, lat, lng, accuracy, distance}
+  subject: null,         // הסייע שנחשף
+  revealTime: null,
+  answers: {},
+  gps: null,
+  checkedToday: [],      // רשומות שהושלמו
+  visitedInst: [],
+  queue: [],
+  online: navigator.onLine
+};
+
+/* ═══════════════════════════════════════════════════════════
+   INDEXEDDB QUEUE (offline)
+   ═══════════════════════════════════════════════════════════ */
+const DB_NAME = 'sayaControlDB', DB_VERSION = 1, STORE = 'queue';
+let db = null;
+
+function openDB() {
+  return new Promise((res, rej) => {
+    const r = indexedDB.open(DB_NAME, DB_VERSION);
+    r.onupgradeneeded = e => {
+      const d = e.target.result;
+      if (!d.objectStoreNames.contains(STORE)) d.createObjectStore(STORE, { keyPath: 'local_id' });
+    };
+    r.onsuccess = e => { db = e.target.result; res(db); };
+    r.onerror = e => rej(e.target.error);
+  });
+}
+function dbAdd(item) {
+  return new Promise((res, rej) => {
+    const tx = db.transaction(STORE, 'readwrite');
+    tx.objectStore(STORE).add(item);
+    tx.oncomplete = res; tx.onerror = () => rej(tx.error);
+  });
+}
+function dbAll() {
+  return new Promise((res, rej) => {
+    const tx = db.transaction(STORE, 'readonly');
+    const q = tx.objectStore(STORE).getAll();
+    q.onsuccess = () => res(q.result || []); q.onerror = () => rej(q.error);
+  });
+}
+function dbDel(id) {
+  return new Promise((res, rej) => {
+    const tx = db.transaction(STORE, 'readwrite');
+    tx.objectStore(STORE).delete(id);
+    tx.oncomplete = res; tx.onerror = () => rej(tx.error);
+  });
+}
+
+/* ═══════════════════════════════════════════════════════════
+   API — בדמו מוחזר מקומית. בפרודקשן: קריאות לשרת.
+   קריטי: getAssignment ו-revealSubject חייבים לרוץ בשרת.
+   אסור לשמור אותם במטמון המכשיר — אחרת המפקח
+   יכול לקרוא את היעד ואת שם הסייע לפני שהגיע.
+   ═══════════════════════════════════════════════════════════ */
+async function apiGet(action, params = {}) {
+  const qs = new URLSearchParams({ action, ...params }).toString();
+  const res = await fetch(`${CONFIG.API_URL}?${qs}`);
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  return res.json();
+}
+async function apiPost(payload) {
+  const res = await fetch(CONFIG.API_URL, {
+    method: 'POST', body: JSON.stringify(payload),
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' }
+  });
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  return res.json();
+}
+
+/* ── שיגור יעד ─────────────────────────────────────────── */
+async function getAssignment() {
+  if (!CONFIG.DEMO_MODE) {
+    const r = await apiGet('assign', { inspector: state.inspector.id });
+    if (!r.ok) throw new Error(r.error);
+    return r.data;
+  }
+
+  // דמו: סינון לפי מגדר + מוסדות שיש בהם מחתימים + טרם בוקרו היום
+  const kind = state.inspector.gender;
+  const pool = DEMO.institutions.filter(i =>
+    i.kind === kind &&
+    DEMO.roster.some(r => r.inst === i.id) &&
+    !state.visitedInst.includes(i.id)
+  );
+  if (!pool.length) return null;
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
+/* ── חשיפת סייע ────────────────────────────────────────── */
+async function revealSubject(instId) {
+  if (!CONFIG.DEMO_MODE) {
+    const r = await apiPost({
+      action: 'reveal',
+      inspector:     state.inspector.id,
+      assignment_id: state.assignment.institution.assignment_id,
+      lat:           state.arrival.lat,
+      lng:           state.arrival.lng,
+      accuracy:      state.arrival.accuracy,
+      test:          CONFIG.TEST_MODE ? 'true' : 'false'
+    });
+    if (!r.ok) throw new Error(r.error);   // השרת דוחה אם המרחק גדול מדי
+    return r.data;
+  }
+  const done = state.checkedToday.map(c => c.aid);
+  const pool = DEMO.roster.filter(r => r.inst === instId && !done.includes(r.aid));
+  if (!pool.length) return null;
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
+/* ═══════════════════════════════════════════════════════════
+   UI HELPERS
+   ═══════════════════════════════════════════════════════════ */
+const $  = s => document.querySelector(s);
+const $$ = s => [...document.querySelectorAll(s)];
+
+function showScreen(n) {
+  $$('.screen').forEach(s => s.classList.remove('active'));
+  $('#screen-' + n).classList.add('active');
+  window.scrollTo(0, 0);
+}
+function toast(msg, type = '') {
+  const t = $('#toast');
+  t.textContent = msg;
+  t.className = 'toast show ' + type;
+  clearTimeout(t._t);
+  t._t = setTimeout(() => t.className = 'toast ' + type, 2800);
+}
+function setSync(status, text) {
+  const p = $('#sync-pill');
+  p.className = 'sync-pill ' + status;
+  $('#sync-text').textContent = text;
+}
+function pad(n) { return String(n).padStart(2, '0'); }
+function fmtDur(ms) {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  return pad(Math.floor(s / 60)) + ':' + pad(s % 60);
+}
+function nowISO() { return new Date().toISOString(); }
+function esc(s) { return String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+function haversine(lat1, lng1, lat2, lng2) {
+  const R = 6371000, toRad = d => d * Math.PI / 180;
+  const dLat = toRad(lat2 - lat1), dLng = toRad(lng2 - lng1);
+  const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng/2)**2;
+  return Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)));
+}
+
+/* ═══════════════════════════════════════════════════════════
+   LOGIN
+   ═══════════════════════════════════════════════════════════ */
+async function populateInspectors() {
+  const sel = $('#sel-inspector');
+  let list = DEMO.inspectors;
+  if (!CONFIG.DEMO_MODE) {
+    try {
+      const r = await apiGet('inspectors');
+      if (r.ok) { list = r.data; DEMO.inspectors = list; }
+    } catch (e) { console.error(e); }
+  }
+  list.forEach(i => {
+    const o = document.createElement('option');
+    o.value = i.id;
+    o.textContent = i.name + (i.gender === 'F' ? ' (מפקחת)' : ' (מפקח)');
+    sel.appendChild(o);
+  });
+  const last = localStorage.getItem(STORAGE.INSPECTOR);
+  if (last) sel.value = last;
+}
+
+function doLogin() {
+  const id = $('#sel-inspector').value;
+  if (!id) { toast('בחר שם מהרשימה', 'error'); return; }
+  state.inspector = DEMO.inspectors.find(i => i.id === id);
+  localStorage.setItem(STORAGE.INSPECTOR, id);
+  $('#btn-logout').style.display = '';
+  const h = new Date().getHours();
+  $('#greet-time').textContent = h < 12 ? 'בוקר טוב' : h < 17 ? 'צהריים טובים' : 'ערב טוב';
+  $('#greet-name').textContent = state.inspector.name;
+  updateStats();
+  showScreen('home');
+}
+
+function logout() {
+  if (state.assignment && !confirm('יש יעד פתוח. לצאת בכל זאת?')) return;
+  state.inspector = null; state.assignment = null; state.subject = null;
+  $('#btn-logout').style.display = 'none';
+  stopGps();
+  showScreen('login');
+}
+
+/* ═══════════════════════════════════════════════════════════
+   STATS
+   ═══════════════════════════════════════════════════════════ */
+function updateStats() {
+  const done = state.checkedToday;
+  $('#st-target').textContent = state.visitedInst.length;
+  $('#st-done').textContent   = done.length;
+  $('#st-flag').textContent   = done.filter(c => c.verdict === 'flag').length;
+  if (done.length) {
+    const avg = done.reduce((s, c) => s + c.secondsReveal, 0) / done.length;
+    $('#st-avg').textContent = fmtDur(avg * 1000);
+  } else $('#st-avg').textContent = '—';
+}
+
+/* ═══════════════════════════════════════════════════════════
+   DISPATCH
+   ═══════════════════════════════════════════════════════════ */
+async function requestAssignment() {
+  const btn = $('#btn-dispatch');
+  btn.disabled = true; btn.textContent = 'משגר…';
+  try {
+    const inst = await getAssignment();
+    if (!inst) {
+      btn.disabled = false; btn.textContent = 'קבל יעד';
+      $('.hero-card').innerHTML =
+        '<div class="empty-state" style="border:none;padding:20px"><div class="icon">🏁</div>' +
+        '<div style="font-weight:600;color:var(--navy);font-size:17px">סיימת את היעדים להיום</div>' +
+        '<div style="margin-top:6px">' + state.checkedToday.length + ' בדיקות הושלמו</div></div>';
+      return;
+    }
+    state.assignment = { institution: inst, dispatchTime: Date.now() };
+    state.arrival = null;
+    renderAssignment();
+    showScreen('assign');
+    startGps();
+    startTimer('#timer-travel', () => state.assignment.dispatchTime);
+  } catch (e) {
+    toast('שגיאת שיגור: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = 'קבל יעד';
+  }
+}
+
+function renderAssignment() {
+  const i = state.assignment.institution;
+  $('#as-name').textContent = i.name;
+  $('#as-addr').textContent = i.addr;
+  $('#as-id').textContent   = 'סמל מוסד: ' + i.symbol;
+  $('#as-type').textContent = i.type;
+}
+
+function openNav() {
+  const i = state.assignment.institution;
+  window.open(`https://waze.com/ul?ll=${i.lat},${i.lng}&navigate=yes`, '_blank');
+}
+
+/* ═══════════════════════════════════════════════════════════
+   GPS
+   ═══════════════════════════════════════════════════════════ */
+let gpsWatch = null;
+
+function startGps() {
+  stopGps();
+  if (!navigator.geolocation) { renderGps(null, 'המכשיר אינו תומך במיקום'); return; }
+  gpsWatch = navigator.geolocation.watchPosition(
+    p => {
+      state.gps = { lat: p.coords.latitude, lng: p.coords.longitude, accuracy: Math.round(p.coords.accuracy) };
+      renderGps(state.gps);
+    },
+    err => renderGps(null, err.code === 1 ? 'הרשאת מיקום חסומה — יש לאשר בהגדרות' : 'לא ניתן לאתר מיקום'),
+    { enableHighAccuracy: true, timeout: CONFIG.GPS_TIMEOUT_MS, maximumAge: 5000 }
+  );
+}
+function stopGps() {
+  if (gpsWatch !== null) { navigator.geolocation.clearWatch(gpsWatch); gpsWatch = null; }
+}
+
+function renderGps(gps, errMsg) {
+  const box = $('#gps-box'), btn = $('#btn-arrive');
+
+  if (CONFIG.TEST_MODE) {
+    const i = state.assignment.institution;
+    const d = gps ? haversine(gps.lat, gps.lng, i.lat, i.lng) : null;
+    box.className = 'gps-box ok';
+    box.innerHTML =
+      '<div class="gps-line"><span>מרחק אמיתי מהיעד</span><span class="v">' +
+      (d === null ? 'לא נמדד' : (d > 2000 ? (d/1000).toFixed(1) + ' ק״מ' : d + ' מ׳')) + '</span></div>' +
+      '<div class="gps-line"><span>אימות הגעה</span><span class="v">הדגמה ✓</span></div>';
+    btn.disabled = false;
+    return;
+  }
+  if (errMsg) {
+    box.className = 'gps-box err'; box.textContent = errMsg;
+    btn.disabled = true; return;
+  }
+  if (!gps) { box.className = 'gps-box'; box.textContent = 'מאתר מיקום…'; btn.disabled = true; return; }
+
+  const i = state.assignment.institution;
+  const dist = haversine(gps.lat, gps.lng, i.lat, i.lng);
+  const accOk = gps.accuracy <= CONFIG.GPS_MIN_ACCURACY;
+  const inFence = dist <= CONFIG.GEOFENCE_METERS;
+
+  box.innerHTML =
+    `<div class="gps-line"><span>מרחק מהיעד</span><span class="v">${dist} מ׳</span></div>` +
+    `<div class="gps-line"><span>דיוק המיקום</span><span class="v">±${gps.accuracy} מ׳</span></div>` +
+    `<div class="gps-line"><span>${inFence && accOk ? 'ניתן לאשר הגעה' : !accOk ? 'דיוק לא מספיק — צא לחלל פתוח' : 'התקרב אל היעד'}</span>` +
+    `<span class="v">${inFence && accOk ? '✓' : '…'}</span></div>`;
+
+  box.className = 'gps-box ' + (inFence && accOk ? 'ok' : 'bad');
+  btn.disabled = !(inFence && accOk);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   ARRIVAL → REVEAL
+   ═══════════════════════════════════════════════════════════ */
+async function confirmArrival() {
+  if (!state.gps && !CONFIG.TEST_MODE) return;
+  const i = state.assignment.institution;
+  const dist = state.gps ? haversine(state.gps.lat, state.gps.lng, i.lat, i.lng) : '';
+
+  state.arrival = {
+    time: Date.now(), iso: nowISO(),
+    lat: state.gps ? state.gps.lat : '', lng: state.gps ? state.gps.lng : '',
+    accuracy: state.gps ? state.gps.accuracy : '', distance: dist
+  };
+
+  const btn = $('#btn-arrive');
+  btn.disabled = true; btn.textContent = 'מאמת…';
+  try {
+    const subj = await revealSubject(i.id);
+    if (!subj) {
+      toast('אין סייעים נוספים לבדיקה במוסד זה', '');
+      finishInstitution();
+      return;
+    }
+    state.subject = subj;
+    state.revealTime = Date.now();
+    state.answers = {};
+    renderCheck();
+    showScreen('check');
+    stopGps();
+    startTimer('#timer-reveal', () => state.revealTime);
+  } catch (e) {
+    toast('שגיאה: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = 'הגעתי';
+  }
+}
+
+function reportBlocked() {
+  if (!confirm('לדווח שלא ניתן להגיע או שסורבה כניסה?')) return;
+  queueRecord({ type: 'access_blocked', verdict: 'flag' });
+  toast('הדיווח נרשם', 'success');
+  finishInstitution();
+}
+
+function finishInstitution() {
+  if (state.assignment && !state.visitedInst.includes(state.assignment.institution.id))
+    state.visitedInst.push(state.assignment.institution.id);
+  state.assignment = null; state.subject = null;
+  stopGps(); stopTimers();
+  updateStats();
+  showScreen('home');
+}
+
+/* ═══════════════════════════════════════════════════════════
+   CHECK SCREEN
+   ═══════════════════════════════════════════════════════════ */
+function renderCheck() {
+  const s = state.subject, i = state.assignment.institution;
+  $('#sc-inst').textContent    = i.name + ' · ' + i.type;
+  $('#sc-name').textContent    = s.name;
+  $('#sc-type').textContent    = s.type;
+  $('#sc-class').textContent   = s.klass;
+  $('#sc-student').textContent = s.student;
+  $('#sc-hours').textContent   = s.hours;
+  $('#sc-clock').textContent   = s.clockIn;
+
+  renderOpts('#q1-opts', PRESENCE, 'presence');
+  renderOpts('#q2-opts', ACTIVITIES.map(a => ({ ...a, tag: tagFor(a.id) })), 'activity');
+  renderOpts('#q3-opts', STUDENT, 'student');
+  renderOpts('#q4-opts', VERIFY, 'verify');
+
+  ['q2','q3','q4','q5'].forEach(q => $('#' + q).classList.add('hidden'));
+  ['q1-sub','q2-sub','q3-sub'].forEach(q => $('#' + q).classList.add('hidden'));
+  ['q1-text','q2-text','q3-text','q4-text','q5-text'].forEach(t => $('#' + t).value = '');
+  $('#btn-save').disabled = true;
+}
+
+function tagFor(activityId) {
+  const m = MATRIX[state.subject.type] || MATRIX['צמוד אישי'];
+  const r = m[activityId];
+  return r === 'ok'      ? { cls:'tag-ok',   txt:'תואם' }
+       : r === 'partial' ? { cls:'tag-part', txt:'חלקי' }
+       :                   { cls:'tag-bad',  txt:'חריגה' };
+}
+
+function renderOpts(sel, list, group) {
+  $(sel).innerHTML = list.map(o =>
+    `<button class="opt" data-group="${group}" data-id="${o.id}" onclick="pick('${group}','${o.id}')">
+       <span class="mark">✓</span>
+       <span class="txt">${esc(o.label)}</span>
+       ${o.tag ? `<span class="tag ${o.tag.cls}">${o.tag.txt}</span>` : ''}
+     </button>`).join('');
+}
+
+function pick(group, id) {
+  $$(`[data-group="${group}"]`).forEach(b => b.classList.remove('selected', 'is-flag'));
+  const btn = $(`[data-group="${group}"][data-id="${id}"]`);
+  btn.classList.add('selected');
+  state.answers[group] = id;
+
+  if (group === 'presence') onPresence(id, btn);
+  if (group === 'activity') onActivity(id, btn);
+  if (group === 'student')  onStudent(id, btn);
+  validate();
+}
+
+function onPresence(id, btn) {
+  const opt = PRESENCE.find(o => o.id === id);
+  if (id === 'not_found') btn.classList.add('is-flag');
+
+  const sub = $('#q1-sub');
+  if (opt.needsText) { sub.classList.remove('hidden'); $('#q1-text').placeholder = opt.placeholder; }
+  else { sub.classList.add('hidden'); $('#q1-text').value = ''; }
+
+  // שאלת הפעילות רלוונטית רק אם נמצא
+  $('#q2').classList.toggle('hidden', id !== 'found');
+  if (id !== 'found') { state.answers.activity = null; $$('[data-group="activity"]').forEach(b => b.classList.remove('selected','is-flag')); }
+
+  $('#q3').classList.remove('hidden');
+  $('#q4').classList.remove('hidden');
+  $('#q5').classList.remove('hidden');
+
+  // אימות מחייב כשלא נמצא
+  $('#q4-help').innerHTML = (id === 'not_found')
+    ? '<span style="color:var(--danger);font-weight:600">חובה. אי אפשר לרשום "לא נמצא" על סמך תצפית בלבד.</span>'
+    : 'מי מסר לך את המידע';
+}
+
+function onActivity(id, btn) {
+  const m = MATRIX[state.subject.type] || {};
+  if (m[id] === 'flag') btn.classList.add('is-flag');
+  const opt = ACTIVITIES.find(a => a.id === id);
+  $('#q2-sub').classList.toggle('hidden', !opt.needsText);
+}
+
+function onStudent(id, btn) {
+  const opt = STUDENT.find(o => o.id === id);
+  if (opt.flag) btn.classList.add('is-flag');
+  $('#q3-sub').classList.toggle('hidden', !opt.needsText);
+  if (opt.needsText) $('#q3-text').placeholder = opt.placeholder;
+}
+
+function validate() {
+  const a = state.answers;
+  let ok = !!a.presence && !!a.student && !!a.verify;
+  if (a.presence === 'found' && !a.activity) ok = false;
+  // "לא נמצא" מחייב אימות מול אדם, לא תצפית
+  if (a.presence === 'not_found' && (a.verify === 'direct' || !$('#q4-text').value.trim())) ok = false;
+  const needsText = { presence:'#q1-text', activity:'#q2-text', student:'#q3-text' };
+  for (const [g, selr] of Object.entries(needsText)) {
+    const src = g === 'presence' ? PRESENCE : g === 'activity' ? ACTIVITIES : STUDENT;
+    const o = src.find(x => x.id === a[g]);
+    if (o && o.needsText && !$(selr).value.trim()) ok = false;
+  }
+  $('#btn-save').disabled = !ok;
+}
+document.addEventListener('input', e => { if (e.target.closest('#screen-check')) validate(); });
+
+/* ═══════════════════════════════════════════════════════════
+   VERDICT + SAVE
+   ═══════════════════════════════════════════════════════════ */
+function computeVerdict() {
+  const a = state.answers;
+  if (a.presence === 'not_found') {
+    // תלמיד נעדר → זו לא בהכרח חריגה, אבל נדרשת הצלבה מול השעון
+    return a.student === 'absent' ? 'review' : 'flag';
+  }
+  if (a.presence === 'blocked') return 'review';
+  if (a.presence === 'substitute' || a.presence === 'approved') return 'review';
+  if (a.student === 'unknown') return 'flag';
+  const m = MATRIX[state.subject.type] || {};
+  const r = m[a.activity];
+  return r === 'ok' ? 'ok' : r === 'partial' ? 'review' : 'flag';
+}
+
+const VERDICT_LABEL = { ok:'תקין', review:'לבדיקה חוזרת', flag:'חריגה' };
+
+async function saveCheck() {
+  const btn = $('#btn-save');
+  btn.disabled = true; btn.textContent = 'שומר…';
+  const verdict = computeVerdict();
+  await queueRecord({ type: 'check', verdict });
+  const s = state.subject;
+  state.checkedToday.push({
+    aid: s.aid, name: s.name, verdict,
+    secondsReveal: Math.round((Date.now() - state.revealTime) / 1000)
+  });
+  stopTimers();
+  updateStats();
+  showNext(s, verdict);
+  btn.disabled = false; btn.textContent = 'שמור דיווח';
+}
+
+async function queueRecord(meta) {
+  const a = state.answers, s = state.subject, i = state.assignment?.institution;
+  const local_id = 'loc_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+  const payload = {
+    local_id,
+    record_type:        meta.type,
+    assignment_id:      i?.assignment_id || '',
+    inspector_id:       state.inspector.id,
+    inspector_name:     state.inspector.name,
+    date:               new Date().toISOString().slice(0, 10),
+    dispatch_time:      state.assignment ? new Date(state.assignment.dispatchTime).toISOString() : '',
+    institution_id:     i?.id || '',
+    institution_symbol: i?.symbol || '',
+    institution_name:   i?.name || '',
+    institution_type:   i?.type || '',
+    arrival_time:       state.arrival?.iso || '',
+    arrival_lat:        state.arrival?.lat ?? '',
+    arrival_lng:        state.arrival?.lng ?? '',
+    distance_m:         state.arrival?.distance ?? '',
+    gps_accuracy_m:     state.arrival?.accuracy ?? '',
+    reveal_time:        state.revealTime ? new Date(state.revealTime).toISOString() : '',
+    assistant_id:       s?.aid || '',
+    assistant_name:     s?.name || '',
+    assistant_type:     s?.type || '',
+    student_name:       s?.student || '',
+    class:              s?.klass || '',
+    scheduled_hours:    s?.hours || '',
+    clock_in:           s?.clockIn || '',
+    presence:           a.presence || '',
+    presence_text:      $('#q1-text')?.value.trim() || '',
+    activity:           a.activity || '',
+    activity_text:      $('#q2-text')?.value.trim() || '',
+    student_status:     a.student || '',
+    student_text:       $('#q3-text')?.value.trim() || '',
+    verified_by:        a.verify || '',
+    verified_name:      $('#q4-text')?.value.trim() || '',
+    notes:              $('#q5-text')?.value.trim() || '',
+    verdict:            meta.verdict,
+    close_time:         nowISO(),
+    seconds_dispatch_to_arrival: state.arrival ? Math.round((state.arrival.time - state.assignment.dispatchTime) / 1000) : '',
+    seconds_reveal_to_report:    state.revealTime ? Math.round((Date.now() - state.revealTime) / 1000) : '',
+    app_version:        CONFIG.VERSION,
+    is_test:            CONFIG.TEST_MODE ? 'true' : 'false'
+  };
+  try {
+    await dbAdd({ local_id, created_at: nowISO(), payload });
+    state.queue = await dbAll();
+    updateSyncPill();
+    if (state.online && !CONFIG.DEMO_MODE) flushQueue();
+  } catch (e) { console.error(e); toast('שגיאת שמירה מקומית', 'error'); }
+}
+
+async function flushQueue() {
+  if (CONFIG.DEMO_MODE || !state.online) return;
+  const items = await dbAll();
+  for (const it of items) {
+    try { await apiPost({ action: 'save', ...it.payload }); await dbDel(it.local_id); }
+    catch (e) { break; }
+  }
+  state.queue = await dbAll();
+  updateSyncPill();
+}
+
+function updateSyncPill() {
+  if (!state.online) return setSync('offline', 'לא מקוון');
+  if (state.queue.length) return setSync('pending', state.queue.length + ' ממתינים');
+  setSync('', 'מקוון');
+}
+
+/* ═══════════════════════════════════════════════════════════
+   NEXT ACTION
+   ═══════════════════════════════════════════════════════════ */
+function showNext(subject, verdict) {
+  const banner = $('#next-banner');
+  banner.classList.toggle('is-flag', verdict === 'flag');
+  $('#next-name').textContent    = subject.name;
+  $('#next-verdict').textContent = VERDICT_LABEL[verdict];
+
+  const instId = state.assignment.institution.id;
+  const done = state.checkedToday.map(c => c.aid);
+  const remaining = DEMO.roster.filter(r => r.inst === instId && !done.includes(r.aid)).length;
+
+  const opts = [];
+  if (remaining > 0) opts.push({
+    primary: true, ic: '→', t: 'סייע נוסף במוסד הזה',
+    s: `נותרו ${remaining} סייעים שלא נבדקו · ${state.assignment.institution.name}`,
+    fn: 'nextInSameInstitution()'
+  });
+  opts.push({ ic: '📍', t: 'יעד הבא', s: 'סיום המוסד ומעבר לשיגור הבא', fn: 'finishInstitution()' });
+  opts.push({ ic: '🏁', t: 'סיום יום', s: `${state.checkedToday.length} בדיקות הושלמו`, fn: 'endDay()' });
+
+  $('#next-options').innerHTML = opts.map(o =>
+    `<button class="next-opt ${o.primary ? 'primary' : ''}" onclick="${o.fn}">
+       <span class="ic">${o.ic}</span>
+       <span class="body"><span class="t">${o.t}</span><span class="s">${esc(o.s)}</span></span>
+     </button>`).join('');
+
+  showScreen('next');
+}
+
+async function nextInSameInstitution() {
+  const subj = await revealSubject(state.assignment.institution.id);
+  if (!subj) { toast('אין סייעים נוספים', ''); finishInstitution(); return; }
+  state.subject = subj;
+  state.revealTime = Date.now();
+  state.answers = {};
+  renderCheck();
+  showScreen('check');
+  startTimer('#timer-reveal', () => state.revealTime);
+}
+
+function endDay() {
+  stopTimers(); stopGps();
+  state.assignment = null;
+  updateStats();
+  $('.hero-card').innerHTML =
+    '<div class="empty-state" style="border:none;padding:20px"><div class="icon">🏁</div>' +
+    '<div style="font-weight:600;color:var(--navy);font-size:17px">יום העבודה נסגר</div>' +
+    '<div style="margin-top:6px">' + state.checkedToday.length + ' בדיקות · ' +
+    state.checkedToday.filter(c => c.verdict === 'flag').length + ' חריגות</div></div>';
+  showScreen('home');
+}
+
+function abortCheck() {
+  if (!confirm('לבטל את הדיווח? הבדיקה תירשם כלא הושלמה.')) return;
+  queueRecord({ type: 'aborted', verdict: 'review' });
+  stopTimers();
+  finishInstitution();
+}
+
+/* ═══════════════════════════════════════════════════════════
+   TIMERS
+   ═══════════════════════════════════════════════════════════ */
+const timers = [];
+function startTimer(sel, getStart) {
+  const el = $(sel);
+  const id = setInterval(() => { el.textContent = fmtDur(Date.now() - getStart()); }, 1000);
+  el.textContent = '00:00';
+  timers.push(id);
+}
+function stopTimers() { while (timers.length) clearInterval(timers.pop()); }
+
+/* ═══════════════════════════════════════════════════════════
+   BOOT
+   ═══════════════════════════════════════════════════════════ */
+window.addEventListener('online',  () => { state.online = true;  updateSyncPill(); flushQueue(); });
+window.addEventListener('offline', () => { state.online = false; updateSyncPill(); });
+
+(async function boot() {
+  try { await openDB(); state.queue = await dbAll(); } catch (e) { console.error(e); }
+  await populateInspectors();
+  updateSyncPill();
+  if (!CONFIG.DEMO_MODE) setInterval(flushQueue, CONFIG.SYNC_INTERVAL_MS);
+})();
+</script>
+</body>
+</html>
