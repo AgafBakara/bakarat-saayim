@@ -154,11 +154,17 @@ tr.clickable td:first-child::after{content:'‹';color:var(--text-muted);margin-
     <div class="login-card">
       <div class="login-icon">◆</div>
       <div class="login-title">דשבורד הנהלה</div>
-      <div class="login-sub">עיריית בני ברק · אגף בקרה</div>
-      <label class="field-label" for="u">שם משתמש</label>
-      <input class="form-input" id="u" autocapitalize="off" spellcheck="false">
-      <label class="field-label" for="p" style="margin-top:14px">סיסמה</label>
-      <input class="form-input" id="p" type="password" onkeydown="if(event.key==='Enter')doLogin()">
+      <div class="login-sub" id="login-sub">עיריית בני ברק · אגף בקרה</div>
+      <div id="mode-pick" style="display:none">
+        <label class="field-label" for="sel-admin">בחר משתמש</label>
+        <select class="form-input" id="sel-admin"><option value="">טוען…</option></select>
+      </div>
+      <div id="mode-pass" style="display:none">
+        <label class="field-label" for="u">שם משתמש</label>
+        <input class="form-input" id="u" autocapitalize="off" spellcheck="false">
+        <label class="field-label" for="p" style="margin-top:14px">סיסמה</label>
+        <input class="form-input" id="p" type="password" onkeydown="if(event.key===\'Enter\')doLogin()">
+      </div>
       <div class="err" id="err"></div>
       <button class="btn-primary" id="btn-login" onclick="doLogin()">כניסה</button>
     </div>
@@ -211,7 +217,7 @@ const CONFIG = {
 /* סיווג מוסד — לא מסווגים מדגם קטן מדי */
 const RULES = { MIN_CHECKS: 5, CONC_RATE: 20, CONC_ABS: 3 };
 
-const state = { token:null, name:null, days:30, tab:'base', data:null };
+const state = { token:null, name:null, inspectorId:null, days:30, tab:'base', data:null };
 const W = {};   /* מטמון לדריל דאון */
 
 const $  = s => document.querySelector(s);
@@ -254,21 +260,36 @@ async function apiPost(payload){
   return r.json();
 }
 async function apiGet(action, params={}){
-  const qs = new URLSearchParams({action, key:CONFIG.ACCESS_KEY, token:state.token||'', ...params});
+  const qs = new URLSearchParams({action, key:CONFIG.ACCESS_KEY, token:state.token||'', inspector:state.inspectorId||'', ...params});
   const r = await fetch(CONFIG.API_URL + '?' + qs);
   return r.json();
 }
 
 /* ═══ התחברות ═══ */
+const ADMINS=[];
+
 async function doLogin(){
   const err=$('#err'), btn=$('#btn-login');
-  err.style.display='none'; btn.disabled=true; btn.textContent='מתחבר...';
+  err.style.display='none';
+
+  // מסלול ללא סיסמה — בחירה מרשימה
+  if($('#mode-pick').style.display!=='none'){
+    const id=$('#sel-admin').value;
+    const who=ADMINS.find(i=>i.id===id);
+    if(!who){ err.textContent='בחר משתמש מהרשימה'; err.style.display='block'; return; }
+    state.token=null; state.name=who.name; state.inspectorId=who.id;
+    sessionStorage.setItem('bakaraDash', JSON.stringify({t:null,n:who.name,i:who.id}));
+    enter();
+    return;
+  }
+
+  btn.disabled=true; btn.textContent='מתחבר...';
   try{
-    const r = await apiPost({action:'login', username:$('#u').value.trim(), password:$('#p').value});
+    const r=await apiPost({action:'login', username:$('#u').value.trim(), password:$('#p').value});
     if(!r.ok) throw new Error(r.error);
     if(r.data.role!=='admin') throw new Error('משתמש זה אינו מורשה לדשבורד ההנהלה');
-    state.token=r.data.token; state.name=r.data.name;
-    sessionStorage.setItem('bakaraDash', JSON.stringify({t:state.token,n:state.name}));
+    state.token=r.data.token; state.name=r.data.name; state.inspectorId=r.data.id;
+    sessionStorage.setItem('bakaraDash', JSON.stringify({t:state.token,n:state.name,i:r.data.id}));
     enter();
   }catch(e){ err.textContent=e.message||'ההתחברות נכשלה'; err.style.display='block'; }
   finally{ btn.disabled=false; btn.textContent='כניסה'; $('#p').value=''; }
@@ -1007,12 +1028,36 @@ function drawCoverMap(inst,C){
 }
 
 /* ═══ אתחול ═══ */
-(function(){
+async function boot(){
   try{
     const sv=JSON.parse(sessionStorage.getItem('bakaraDash')||'null');
-    if(sv&&sv.t){ state.token=sv.t; state.name=sv.n; enter(); }
+    if(sv&&(sv.t||sv.i)){ state.token=sv.t; state.name=sv.n; state.inspectorId=sv.i||null; return enter(); }
   }catch(e){}
-})();
+
+  // ניסיון לשלוף רשימת מפקחים. מצליח רק כשהאימות כבוי.
+  const btn=$('#btn-login'), err=$('#err');
+  btn.disabled=true;
+  try{
+    const r=await apiGet('inspectors');
+    if(r.ok && r.data && r.data.length){
+      const sel=$('#sel-admin');
+      sel.innerHTML='<option value="">בחר מהרשימה...</option>';
+      ADMINS.length=0;
+      r.data.forEach(i=>{ ADMINS.push(i);
+        const o=document.createElement('option');
+        o.value=i.id; o.textContent=i.name; sel.appendChild(o); });
+      $('#mode-pick').style.display='';
+      $('#login-sub').innerHTML='עיריית בני ברק · <span style="color:var(--gold-dark);font-weight:600">אימות סיסמה כבוי</span>';
+      btn.disabled=false;
+      return;
+    }
+    throw new Error(r.error||'');
+  }catch(e){
+    $('#mode-pass').style.display='';
+    btn.disabled=false;
+  }
+}
+boot();
 </script>
 </body>
 </html>
