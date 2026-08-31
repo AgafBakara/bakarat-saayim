@@ -676,7 +676,11 @@ async function apiPost(payload) {
 /* ── שיגור יעד ─────────────────────────────────────────── */
 async function getAssignment() {
   if (!CONFIG.DEMO_MODE) {
-    const r = await apiGet('assign', { inspector: state.inspector.id });
+    const here = await currentPosition_();
+    const r = await apiGet('assign', {
+      inspector: state.inspector.id,
+      lat: here ? here.lat : '', lng: here ? here.lng : ''
+    });
     if (!r.ok) throw new Error(r.error);
     return r.data;
   }
@@ -711,6 +715,18 @@ async function revealSubject(instId) {
   const pool = DEMO.roster.filter(r => r.inst === instId && !done.includes(r.aid));
   if (!pool.length) return null;
   return pool[Math.floor(Math.random() * pool.length)];
+}
+
+/* מיקום נוכחי, לצורך שיגור ליעד קרוב. לא חוסם אם נכשל. */
+function currentPosition_() {
+  return new Promise(res => {
+    if (!navigator.geolocation) return res(null);
+    navigator.geolocation.getCurrentPosition(
+      p => res({ lat: p.coords.latitude, lng: p.coords.longitude }),
+      () => res(null),
+      { enableHighAccuracy: false, timeout: 6000, maximumAge: 120000 }
+    );
+  });
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -846,6 +862,10 @@ function renderAssignment() {
   $('#as-addr').textContent = i.addr;
   $('#as-id').textContent   = 'סמל מוסד: ' + i.symbol;
   $('#as-type').textContent = i.type;
+  if (i.hop_m) {
+    $('#as-id').textContent += '  ·  ' +
+      (i.hop_m > 1000 ? (i.hop_m/1000).toFixed(1) + ' ק״מ ממך' : i.hop_m + ' מ׳ ממך');
+  }
 }
 
 function openNav() {
