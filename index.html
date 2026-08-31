@@ -665,12 +665,21 @@ function dbDel(id) {
    יכול לקרוא את היעד ואת שם הסייע לפני שהגיע.
    ═══════════════════════════════════════════════════════════ */
 async function apiGet(action, params = {}) {
-  const qs = new URLSearchParams({ action, token: state.token || '', inspector: (state.inspector && state.inspector.id) || '', ...params }).toString();
+  const qs = new URLSearchParams({
+    action,
+    key: CONFIG.ACCESS_KEY || '',
+    token: state.token || '',
+    inspector: (state.inspector && state.inspector.id) || '',
+    ...params
+  }).toString();
   const res = await fetch(`${CONFIG.API_URL}?${qs}`);
   if (!res.ok) throw new Error('HTTP ' + res.status);
   return res.json();
 }
 async function apiPost(payload) {
+  payload.key = CONFIG.ACCESS_KEY || '';
+  if (state.token) payload.token = state.token;
+  if (state.inspector && !payload.inspector) payload.inspector = state.inspector.id;
   const res = await fetch(CONFIG.API_URL, {
     method: 'POST', body: JSON.stringify(payload),
     headers: { 'Content-Type': 'text/plain;charset=utf-8' }
