@@ -99,23 +99,33 @@ tr.clickable td:first-child::after{content:'‹';color:var(--text-muted);margin-
 .loading{padding:60px;text-align:center;color:var(--text-muted)}
 
 .modal-bg{position:fixed;inset:0;background:rgba(21,35,80,.45);z-index:900;display:none;
-  align-items:flex-start;justify-content:center;padding:40px 20px;overflow-y:auto}
+  align-items:center;justify-content:center;padding:24px 16px}
 .modal-bg.show{display:flex}
 .modal{background:var(--surface);border-radius:var(--radius-lg);box-shadow:var(--shadow-lg);
-  width:100%;max-width:1040px;overflow:hidden;animation:pop .15s ease-out}
+  width:min(1180px,96vw);max-height:92vh;display:flex;flex-direction:column;
+  overflow:hidden;animation:pop .15s ease-out}
 @keyframes pop{from{transform:translateY(-8px);opacity:0}to{transform:none;opacity:1}}
 .modal-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;
   padding:18px 22px;border-bottom:1px solid var(--border);background:#fafbfc}
 .modal-head .t{font-size:18px;font-weight:700;color:var(--navy)}
 .modal-head .s{font-size:13px;color:var(--text-muted);margin-top:3px}
 .modal-x{background:var(--border);color:var(--text);width:32px;height:32px;border-radius:50%;font-size:17px;flex-shrink:0;line-height:1}
-.modal-body{max-height:64vh;overflow:auto}
+.modal-body{flex:1;min-height:0;overflow:auto}
+.modal-body table{min-width:900px}
+.modal-body th{position:sticky;top:0;z-index:2;background:#fafbfc;box-shadow:0 1px 0 var(--border)}
+.modal-body td{white-space:nowrap;max-width:220px;overflow:hidden;text-overflow:ellipsis}
+.modal-body td.wrap{white-space:normal;max-width:260px}
+.mini-kpis{flex-shrink:0}
+.modal-head{flex-shrink:0}
 .mini-kpis{display:flex;gap:10px;flex-wrap:wrap;padding:14px 22px;border-bottom:1px solid var(--border)}
 .mini{background:var(--bg);border-radius:var(--radius-sm);padding:8px 14px;min-width:86px}
 .mini .n{font-size:18px;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums}
 .mini .l{font-size:11.5px;color:var(--text-muted)}
 
-#map{height:560px;border-radius:var(--radius);border:1px solid var(--border)}
+#map{height:min(60vh,600px);min-height:380px;border-radius:var(--radius);border:1px solid var(--border);background:#eef1f5}
+.layer-toggles{display:flex;gap:16px;flex-wrap:wrap;padding:12px 4px 4px;font-size:13.5px}
+.layer-toggles label{display:flex;align-items:center;gap:7px;cursor:pointer;color:var(--text)}
+.layer-toggles input{width:15px;height:15px;accent-color:var(--teal);cursor:pointer}
 .legend{display:flex;gap:18px;flex-wrap:wrap;font-size:13px;color:var(--text-muted);padding:12px 4px}
 .legend i{display:inline-block;width:11px;height:11px;border-radius:50%;margin-left:6px;vertical-align:middle}
 
@@ -161,7 +171,7 @@ tr.clickable td:first-child::after{content:'‹';color:var(--text-muted);margin-
       <button class="tab active" data-t="base"    onclick="setTab('base')">מצב קיים</button>
       <button class="tab"        data-t="results" onclick="setTab('results')">תוצאות בקרה</button>
       <button class="tab"        data-t="time"    onclick="setTab('time')">פעילות מפקחים</button>
-      <button class="tab"        data-t="map"     onclick="setTab('map')">מפה</button>
+      <button class="tab"        data-t="cover"   onclick="setTab('cover')">כיסוי ומפה</button>
     </div>
     <div class="toolbar">
       <div id="range-chips" style="display:flex;gap:10px">
@@ -352,7 +362,7 @@ function checksTable(list){
     <td style="white-space:nowrap">${esc(c.assistant)}</td>
     <td style="white-space:nowrap">${esc(c.atype)}</td>
     <td style="white-space:nowrap">${esc(PRES_LABEL[c.presence]||c.presence)}</td>
-    <td>${esc(ACT_LABEL[c.activity]||'—')}</td>
+    <td class="wrap">${esc(ACT_LABEL[c.activity]||'—')}</td>
     <td style="white-space:nowrap">${esc(STUD_LABEL[c.student_status]||'—')}</td>
     <td style="white-space:nowrap">${esc(c.verified_name||VER_LABEL[c.verified_by]||'—')}</td>
     <td>${vp(c.verdict)}</td></tr>`).join('')}</tbody></table>`;
@@ -374,7 +384,7 @@ function render(){
   if(state.tab==='base')    return renderBase();
   if(state.tab==='results') return renderResults();
   if(state.tab==='time')    return renderTime();
-  return renderMap();
+  return renderCoverage();
 }
 
 /* ══════ מצב קיים ══════ */
@@ -517,6 +527,7 @@ function renderResults(){
   </div>`
   + '<div class="grid2">'+inspectorPanel(C)+institutionResultPanel(C,I)+'</div>'
   + '<div class="grid2">'+activityPanel(C)+typePanel(C)+'</div>'
+  + '<div class="grid2">'+trendPanel(C)+recheckPanel(C)+'</div>'
   + blockedPanel()
   + assistantPanel(C);
 }
@@ -609,6 +620,71 @@ function typePanel(C){
 }
 function drillType(k){
   drillChecks(k,'כל הבדיקות לסוג סייע זה',state.data.checks.filter(c=>c.atype===k));
+}
+
+/* מגמה חודשית — המספר שמוכיח אם הבקרה משנה התנהגות */
+function trendPanel(C){
+  const g={};
+  C.forEach(c=>{ const m=c.date.slice(0,7); (g[m]=g[m]||[]).push(c); });
+  const months=Object.keys(g).sort();
+  if(months.length<2) return `<div class="panel"><h3>מגמה חודשית</h3>
+    <div class="empty">נדרשים לפחות חודשיים של בדיקות</div></div>`;
+  const rows=months.map(m=>{
+    const a=g[m], f=a.filter(c=>c.verdict==='flag').length;
+    return {m,n:a.length,f,rate:pct(f,a.length)};
+  });
+  const max=Math.max(...rows.map(r=>r.rate),1);
+  const first=rows[0].rate, last=rows[rows.length-1].rate;
+  const dir = last<first ? {t:'ירידה של '+(first-last)+' נק׳ אחוז',c:'var(--success)'}
+            : last>first ? {t:'עלייה של '+(last-first)+' נק׳ אחוז',c:'var(--danger)'}
+            : {t:'ללא שינוי',c:'var(--text-muted)'};
+  return `<div class="panel"><h3>מגמת חריגות לפי חודש
+      <span class="note" style="color:${dir.c};font-weight:600">${dir.t} מתחילת התקופה</span></h3>
+    <div class="body"><table><thead><tr>
+      <th>חודש</th><th>בדיקות</th><th>חריגות</th><th style="width:44%">שיעור</th>
+    </tr></thead><tbody>${rows.map(r=>`<tr class="clickable" onclick="drillMonth('${r.m}')">
+      <td class="num-cell">${r.m}</td><td class="num-cell">${r.n}</td><td class="num-cell">${r.f}</td>
+      <td><div style="display:flex;align-items:center;gap:8px">
+        <div class="bar ${r.rate?'risk':''}"><span style="width:${r.rate/max*100}%"></span></div>
+        <span class="num-cell" style="font-size:12px">${r.rate}%</span></div></td>
+    </tr>`).join('')}</tbody></table></div></div>`;
+}
+function drillMonth(m){
+  drillChecks(m,'כל הבדיקות בחודש',state.data.checks.filter(c=>c.date.slice(0,7)===m));
+}
+
+/* ביקורות חוזרות — האם אחרי ממצא בוצעה בדיקה נוספת, ומה קרה בה */
+function recheckPanel(C){
+  const byA=group(C,'assistant');
+  const rows=[];
+  Object.keys(byA).forEach(name=>{
+    const a=byA[name].slice().sort((x,y)=>x.date.localeCompare(y.date));
+    a.forEach((c,i)=>{
+      if(c.verdict!=='flag') return;
+      const next=a.slice(i+1).find(x=>x.date>c.date);
+      const days=next?Math.round((new Date(next.date)-new Date(c.date))/86400000):null;
+      rows.push({name,inst:c.institution,date:c.date,next:next?next.date:null,days,
+                 result:next?next.verdict:null});
+    });
+  });
+  if(!rows.length) return `<div class="panel"><h3>ביקורות חוזרות</h3>
+    <div class="empty">אין עדיין חריגות למעקב</div></div>`;
+  const none=rows.filter(r=>!r.next).length;
+  const fixed=rows.filter(r=>r.result==='ok').length;
+  const again=rows.filter(r=>r.result==='flag').length;
+  const st=r=>!r.next?'<span class="pill p-none">טרם נבדק שוב</span>'
+        :r.result==='flag'?'<span class="pill p-flag">חריגה חוזרת</span>'
+        :r.result==='review'?'<span class="pill p-review">לבדיקה</span>'
+        :'<span class="pill p-ok">תקין בבדיקה חוזרת</span>';
+  return `<div class="panel"><h3>ביקורות חוזרות אחרי ממצא
+      <span class="note">${fixed} תוקנו · ${again} חזרו · ${none} טרם נבדקו שוב</span></h3>
+    <div class="body" style="max-height:400px;overflow:auto"><table><thead><tr>
+      <th>סייע</th><th>מוסד</th><th>הממצא</th><th>נבדק שוב</th><th>אחרי</th><th>תוצאה</th>
+    </tr></thead><tbody>${rows.slice(0,60).map(r=>`<tr class="clickable" onclick="drillAssistant('${esc(r.name).replace(/'/g,'&#39;')}')">
+      <td>${esc(r.name)}</td><td>${esc(r.inst)}</td><td class="num-cell">${r.date}</td>
+      <td class="num-cell">${r.next||'—'}</td>
+      <td class="num-cell">${r.days!=null?r.days+' ימים':'—'}</td><td>${st(r)}</td>
+    </tr>`).join('')}</tbody></table></div></div>`;
 }
 
 function blockedPanel(){
@@ -809,48 +885,125 @@ function timeline(d){
 }
 
 /* ══════ מפה ══════ */
-function renderMap(){
-  const C=state.data.checks.filter(c=>c.lat&&c.lng);
-  const far=C.filter(c=>c.distance>60).length;
-  $('#content').innerHTML=`<div class="panel"><h3>נעיצות הגעה
-      <span class="note">כל נקודה היא המקום שבו נלחץ ״הגעתי״ · ${far} נעיצות מעל 60 מ׳ מהיעד</span></h3>
-    <div style="padding:12px"><div id="map"></div>
-      <div class="legend">
-        <span><i style="background:#16a34a"></i>תקין</span>
-        <span><i style="background:#c6a636"></i>לבדיקה חוזרת</span>
-        <span><i style="background:#dc2626"></i>חריגה</span>
-        <span><i style="background:#152350"></i>מוסד לפי הגיליון</span>
-        <span style="margin-right:auto">${C.length} נעיצות</span>
-      </div></div></div>`;
-  setTimeout(()=>drawMap(C),80);
+function daysSince_(d){ return Math.round((Date.now()-new Date(d).getTime())/86400000); }
+
+function coverageData(){
+  const C=state.data.checks, I=state.data.institutions.filter(i=>i.active), R=state.data.roster;
+  const lastI={}, lastA={};
+  C.forEach(c=>{
+    if(!lastI[c.institution]||c.date>lastI[c.institution]) lastI[c.institution]=c.date;
+    if(!lastA[c.assistant]||c.date>lastA[c.assistant]) lastA[c.assistant]=c.date;
+  });
+  const inst=I.map(i=>({...i, last:lastI[i.name]||null,
+    days:lastI[i.name]?daysSince_(lastI[i.name]):null,
+    n:R.filter(r=>r.institution===i.name).length}))
+    .sort((a,b)=>(b.days==null?1e9:b.days)-(a.days==null?1e9:a.days));
+  const seen={};
+  const ass=R.filter(r=>{ if(seen[r.aid])return false; seen[r.aid]=1; return true; })
+    .map(r=>({...r, last:lastA[r.name]||null, days:lastA[r.name]?daysSince_(lastA[r.name]):null}))
+    .sort((a,b)=>(b.days==null?1e9:b.days)-(a.days==null?1e9:a.days));
+  return {inst,ass};
 }
 
-function drawMap(C){
+function ageColor(d){
+  if(d==null) return '#dc2626';
+  if(d<=14) return '#16a34a';
+  if(d<=60) return '#c6a636';
+  return '#dc2626';
+}
+function agePill(d){
+  if(d==null) return '<span class="pill p-flag">טרם נבדק</span>';
+  if(d<=14) return '<span class="pill p-ok">'+d+' ימים</span>';
+  if(d<=60) return '<span class="pill p-review">'+d+' ימים</span>';
+  return '<span class="pill p-flag">'+d+' ימים</span>';
+}
+
+function renderCoverage(){
+  const {inst,ass}=coverageData();
+  const C=state.data.checks.filter(c=>c.lat&&c.lng);
+  const never=inst.filter(i=>i.days==null).length;
+  const stale=inst.filter(i=>i.days!=null&&i.days>60).length;
+  const aNever=ass.filter(a=>a.days==null).length;
+
+  $('#content').innerHTML=`<div class="kpi-row">
+    <div class="kpi bad"><div class="num">${never}</div><div class="label">מוסדות שטרם נבדקו</div>
+      <div class="sub">מתוך ${inst.length}</div></div>
+    <div class="kpi warn"><div class="num">${stale}</div><div class="label">מוסדות מעל 60 יום</div>
+      <div class="sub">ללא בקרה</div></div>
+    <div class="kpi bad"><div class="num">${aNever}</div><div class="label">סייעים שטרם נבדקו</div>
+      <div class="sub">מתוך ${ass.length}</div></div>
+    <div class="kpi ok"><div class="num">${inst.filter(i=>i.days!=null&&i.days<=14).length}</div>
+      <div class="label">נבדקו בשבועיים</div><div class="sub">מוסדות</div></div>
+    <div class="kpi"><div class="num">${inst.filter(i=>i.days!=null).length?Math.round(inst.filter(i=>i.days!=null).reduce((s,i)=>s+i.days,0)/inst.filter(i=>i.days!=null).length):'—'}</div>
+      <div class="label">ימים מאז בקרה</div><div class="sub">ממוצע למוסד שנבדק</div></div>
+  </div>
+  <div class="panel"><h3>מפת כיסוי
+      <span class="note">צבע המוסד לפי הזמן שעבר מהבקרה האחרונה — אדום = טרם נבדק או מעל 60 יום</span></h3>
+    <div style="padding:12px">
+      <div class="layer-toggles">
+        <label><input type="checkbox" id="ly-pins" onchange="toggleLayer('pins')">
+          הצג גם נעיצות בדיקה (${C.length})</label>
+        <span class="hint" style="margin-right:auto">
+          <span style="color:#16a34a">●</span> עד 14 יום &nbsp;
+          <span style="color:#c6a636">●</span> 15–60 &nbsp;
+          <span style="color:#dc2626">●</span> מעל 60 או טרם</span>
+      </div>
+      <div id="map"></div></div></div>
+  <div class="grid2">${coverList(inst,'מוסדות לפי זמן מהבקרה האחרונה','drillInstitution','name','n','שיבוצים')}
+  ${coverList(ass,'סייעים לפי זמן מהבדיקה האחרונה','drillAssistant','name','institution','מוסד')}</div>`;
+  setTimeout(()=>drawCoverMap(inst,C),120);
+}
+
+function coverList(rows,title,fn,key,extra,extraLabel){
+  return `<div class="panel"><h3>${title}
+      <span class="note">הרשימה שקובעת לאן לשלוח מחר</span></h3>
+    <div class="body" style="max-height:460px;overflow:auto"><table><thead><tr>
+      <th>שם</th><th>${extraLabel}</th><th>בקרה אחרונה</th><th>מאז</th>
+    </tr></thead><tbody>${rows.slice(0,60).map(r=>`<tr class="clickable" onclick="${fn}('${esc(r[key]).replace(/'/g,'&#39;')}')">
+      <td>${esc(r[key])}</td><td>${esc(r[extra])}</td>
+      <td class="num-cell">${r.last||'—'}</td><td>${agePill(r.days)}</td>
+    </tr>`).join('')}</tbody></table></div></div>`;
+}
+
+const LAYERS={};
+function toggleLayer(k){
+  const on=$('#ly-'+k).checked;
+  if(!LAYERS[k]||!LAYERS.__map) return;
+  on ? LAYERS.__map.addLayer(LAYERS[k]) : LAYERS.__map.removeLayer(LAYERS[k]);
+}
+
+function drawCoverMap(inst,C){
+  const box=$('#map');
   if(typeof L==='undefined'){
-    $('#map').innerHTML='<div class="empty">ספריית המפה לא נטענה. נדרש חיבור לאינטרנט.</div>';
+    box.innerHTML='<div class="empty" style="padding-top:150px">ספריית המפה לא נטענה. נדרש חיבור לאינטרנט.</div>';
     return;
   }
-  const I=state.data.institutions.filter(i=>i.lat&&i.lng);
-  const map=L.map('map').setView(I.length?[I[0].lat,I[0].lng]:[32.084,34.833],14);
+  const I=inst.filter(i=>i.lat&&i.lng);
+  const map=L.map(box,{scrollWheelZoom:false}).setView(I.length?[I[0].lat,I[0].lng]:[32.084,34.833],14);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
     {maxZoom:19,attribution:'© OpenStreetMap'}).addTo(map);
+  LAYERS.__map=map;
 
-  I.forEach(i=>L.circleMarker([i.lat,i.lng],{radius:8,color:'#152350',weight:2,
-      fillColor:'#152350',fillOpacity:.2})
-    .bindPopup('<b>'+esc(i.name)+'</b><br>מיקום לפי גיליון המוסדות').addTo(map));
+  I.forEach(i=>{
+    const col=ageColor(i.days);
+    L.circleMarker([i.lat,i.lng],{radius:8+Math.min(i.n/3,9),color:col,weight:2,
+      fillColor:col,fillOpacity:.45})
+     .bindPopup('<b>'+esc(i.name)+'</b><br>'+i.n+' שיבוצים<br>'+
+       (i.days==null?'<b style="color:#dc2626">טרם נבדק</b>':'בקרה אחרונה: '+i.last+' ('+i.days+' ימים)'))
+     .addTo(map);
+  });
 
   const col={ok:'#16a34a',review:'#c6a636',flag:'#dc2626'};
-  const pts=[];
-  C.forEach(c=>{
-    pts.push([c.lat,c.lng]);
-    L.circleMarker([c.lat,c.lng],{radius:5,color:col[c.verdict]||'#6b7280',weight:1.5,
-      fillColor:col[c.verdict]||'#6b7280',fillOpacity:.85})
-     .bindPopup(`<b>${esc(c.assistant)}</b><br>${esc(c.institution)}<br>
-        ${esc(c.date)} · ${esc(c.inspector)}<br>
-        ${esc(PRES_LABEL[c.presence]||'')} · ${esc(ACT_LABEL[c.activity]||'—')}<br>
-        מרחק מהיעד: ${c.distance} מ׳`).addTo(map);
-  });
-  if(pts.length) map.fitBounds(L.latLngBounds(pts).pad(0.15));
+  LAYERS.pins=L.layerGroup(C.map(c=>
+    L.circleMarker([c.lat,c.lng],{radius:3.5,color:'#333',weight:.8,
+      fillColor:col[c.verdict]||'#6b7280',fillOpacity:.9})
+     .bindPopup(`<b>${esc(c.assistant)}</b><br>${esc(c.institution)}<br>${esc(c.date)} · ${esc(c.inspector)}<br>מרחק: ${c.distance} מ׳`)
+  ));
+
+  const pts=I.map(i=>[i.lat,i.lng]);
+  if(pts.length) map.fitBounds(L.latLngBounds(pts).pad(0.12));
+  setTimeout(()=>map.invalidateSize(),150);
+  setTimeout(()=>map.invalidateSize(),600);
 }
 
 /* ═══ אתחול ═══ */
