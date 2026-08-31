@@ -469,6 +469,9 @@ textarea.form-input { min-height: 84px; resize: vertical; line-height: 1.5; }
       <textarea class="form-input" id="q5-text" placeholder="כל דבר שראית וחשוב שיירשם"></textarea>
     </div>
   </div>
+  <div id="missing-bar" style="display:none;position:fixed;bottom:calc(74px + env(safe-area-inset-bottom));
+     right:0;left:0;background:var(--gold-light);border-top:1px solid #f0dd9e;color:var(--gold-dark);
+     padding:9px 16px;font-size:13.5px;font-weight:600;text-align:center;z-index:89"></div>
   <div class="save-bar">
     <button class="btn-cancel" onclick="abortCheck()">ביטול</button>
     <button class="btn-save" id="btn-save" onclick="saveCheck()" disabled>שמור דיווח</button>
@@ -997,6 +1000,7 @@ async function confirmArrival() {
     }
     state.subject = subj;
     state.remaining = subj.remaining || 0;
+    state.quota = subj.quota; state.atInst = subj.at_institution;
     state.revealTime = Date.now();
     state.answers = {};
     renderCheck();
@@ -1050,6 +1054,8 @@ function renderCheck() {
   $$('.opt').forEach(b => { b.style.opacity = ''; b.style.pointerEvents = ''; b.title = ''; });
   ['q1-text','q2-text','q3-text','q4-text','q5-text'].forEach(t => $('#' + t).value = '');
   $('#btn-save').disabled = true;
+  $('#missing-bar').style.display = 'none';
+  $('#q4-text').style.borderColor = '';
 }
 
 function tagFor(activityId) {
@@ -1082,6 +1088,10 @@ function pick(group, id) {
 }
 
 function onPresence(id, btn) {
+  const req = (id === 'not_found');
+  const f = $('#q4-text');
+  f.placeholder = req ? 'חובה — שם ותפקיד של מי שאישר' : 'שם ותפקיד של מי שאישר לגבי הסייע';
+  f.style.borderColor = req ? 'var(--danger)' : '';
   const opt = PRESENCE.find(o => o.id === id);
   if (id === 'not_found') btn.classList.add('is-flag');
 
@@ -1099,7 +1109,7 @@ function onPresence(id, btn) {
 
   // אימות מחייב כשלא נמצא
   $('#q4-help').innerHTML = (id === 'not_found')
-    ? '<span style="color:var(--danger);font-weight:600">חובה. מי אישר שהסייע אינו במוסד? אי אפשר לרשום "לא נמצא" על סמך תצפית בלבד.</span>'
+    ? '<span style="color:var(--danger);font-weight:600">חובה: בחר מי אישר, ורשום את שמו ותפקידו בשדה שלמטה. תצפית בלבד אינה מספיקה.</span>'
     : 'מי אישר לך שהסייע נמצא או לא נמצא — לא מדובר בתלמיד';
 }
 
@@ -1156,19 +1166,41 @@ function onStudent(id, btn) {
 
 function validate() {
   const a = state.answers;
-  let ok = !!a.presence && !!a.verify && (!state.needsStudent || !!a.student);
-  // סתירה חוסמת שמירה, לא רק מעמעמת כפתורים
-  if (CONTACT_ACTIVITIES.indexOf(a.activity) > -1 && NO_STUDENT_STATES.indexOf(a.student) > -1) ok = false;
-  if (a.presence === 'found' && !a.activity) ok = false;
-  // "לא נמצא" מחייב אימות מול אדם, לא תצפית
-  if (a.presence === 'not_found' && (a.verify === 'direct' || !$('#q4-text').value.trim())) ok = false;
+  const missing = [];
+
+  if (!a.presence) missing.push('מצב הסייע');
+  if (a.presence === 'found' && !a.activity) missing.push('מה הסייע עושה');
+  if (state.needsStudent && !a.student) missing.push('מצב התלמיד');
+  if (!a.verify) missing.push('מי אישר');
+
+  // "לא נמצא" מחייב אימות מול אדם מזוהה
+  if (a.presence === 'not_found') {
+    if (a.verify === 'direct') missing.push('תצפית בלבד אינה מספיקה עבור ״לא נמצא״');
+    else if (a.verify && !$('#q4-text').value.trim()) missing.push('שם ותפקיד של מי שאישר');
+  }
+
+  // סתירה בין התשובות
+  if (CONTACT_ACTIVITIES.indexOf(a.activity) > -1 && NO_STUDENT_STATES.indexOf(a.student) > -1)
+    missing.push('סתירה בין שאלה 2 לשאלה 3');
+
+  // שדות טקסט חובה
   const needsText = { presence:'#q1-text', activity:'#q2-text', student:'#q3-text' };
   for (const [g, selr] of Object.entries(needsText)) {
     const src = g === 'presence' ? PRESENCE : g === 'activity' ? ACTIVITIES : STUDENT;
     const o = src.find(x => x.id === a[g]);
-    if (o && o.needsText && !$(selr).value.trim()) ok = false;
+    if (o && o.needsText && !$(selr).value.trim()) missing.push(o.placeholder || 'פרטים נוספים');
   }
-  $('#btn-save').disabled = !ok;
+
+  const bar = $('#missing-bar');
+  if (missing.length) {
+    bar.textContent = 'חסר להשלמה: ' + missing.join('  ·  ');
+    bar.style.display = 'block';
+  } else {
+    bar.textContent = '';
+    bar.style.display = 'none';
+  }
+  $('#btn-save').disabled = missing.length > 0;
+  return missing;
 }
 document.addEventListener('input', e => { if (e.target.closest('#screen-check')) validate(); });
 
@@ -1192,6 +1224,8 @@ function computeVerdict() {
 const VERDICT_LABEL = { ok:'תקין', review:'לבדיקה חוזרת', flag:'חריגה' };
 
 async function saveCheck() {
+  const missing = validate();
+  if (missing && missing.length) { toast('חסר: ' + missing[0], 'error'); return; }
   const btn = $('#btn-save');
   btn.disabled = true; btn.textContent = 'שומר…';
 
