@@ -6,6 +6,7 @@
 <meta name="theme-color" content="#152350">
 <title>בקרת סייעים · דשבורד הנהלה</title>
 <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <style>
 :root{
   --teal:#2b8c7e;--teal-dark:#1f6b60;--teal-light:#e8f5f2;
@@ -22,16 +23,14 @@
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{font-family:'Heebo',system-ui,sans-serif;background:var(--bg);color:var(--text);font-size:16px;line-height:1.5}
 button{font-family:inherit;font-size:inherit;cursor:pointer;border:none}
-input,select{font-family:inherit;font-size:inherit}
+input{font-family:inherit;font-size:inherit}
 
 .app-header{background:linear-gradient(135deg,var(--navy) 0%,#1e3270 100%);color:#fff;padding:16px 24px;
-  box-shadow:var(--shadow);position:sticky;top:0;z-index:100}
-.title-row{display:flex;align-items:center;justify-content:space-between;gap:12px;max-width:1240px;margin:0 auto}
+  box-shadow:var(--shadow);position:sticky;top:0;z-index:600}
+.title-row{display:flex;align-items:center;justify-content:space-between;gap:12px;max-width:1300px;margin:0 auto}
 .app-title{font-size:18px;font-weight:700;display:flex;align-items:center;gap:8px}
-.header-btn{background:rgba(255,255,255,.15);color:#fff;padding:8px 14px;border-radius:var(--radius-sm);
-  font-size:13px;font-weight:500}
-.header-btn:active{background:rgba(255,255,255,.25)}
-.container{max-width:1240px;margin:0 auto;padding:20px 24px 60px}
+.header-btn{background:rgba(255,255,255,.15);color:#fff;padding:8px 14px;border-radius:var(--radius-sm);font-size:13px;font-weight:500}
+.container{max-width:1300px;margin:0 auto;padding:20px 24px 60px}
 
 .screen{display:none}.screen.active{display:block}
 #screen-login .container{display:flex;align-items:center;justify-content:center;min-height:calc(100vh - 100px)}
@@ -42,43 +41,35 @@ input,select{font-family:inherit;font-size:inherit}
 .login-title{font-size:21px;font-weight:700;color:var(--navy)}
 .login-sub{color:var(--text-muted);font-size:14px;margin-bottom:24px}
 .field-label{display:block;text-align:right;font-size:13px;font-weight:600;color:var(--text-muted);margin-bottom:7px}
-.form-input,.form-select{width:100%;padding:13px 15px;border:2px solid var(--border);border-radius:var(--radius);
+.form-input{width:100%;padding:13px 15px;border:2px solid var(--border);border-radius:var(--radius);
   background:var(--surface);text-align:right;font-size:16px}
-.form-input:focus,.form-select:focus{outline:none;border-color:var(--teal);box-shadow:0 0 0 3px var(--teal-light)}
+.form-input:focus{outline:none;border-color:var(--teal);box-shadow:0 0 0 3px var(--teal-light)}
 .btn-primary{width:100%;background:var(--navy);color:#fff;padding:15px;border-radius:var(--radius);
   font-size:16px;font-weight:600;margin-top:18px}
-.btn-primary:active{background:#1e3270}
-.btn-primary:disabled{background:#cbd5e1}
 .err{display:none;margin-top:12px;padding:10px 12px;border-radius:var(--radius-sm);
   background:var(--danger-light);color:#7f1d1d;font-size:14px;font-weight:500}
 
-.tabs{display:flex;gap:4px;border-bottom:2px solid var(--border);margin-bottom:18px}
-.tab{background:none;padding:11px 22px;font-size:15px;font-weight:600;color:var(--text-muted);
-  border-bottom:3px solid transparent;margin-bottom:-2px}
+.tabs{display:flex;gap:4px;border-bottom:2px solid var(--border);margin-bottom:18px;overflow-x:auto}
+.tab{background:none;padding:11px 20px;font-size:15px;font-weight:600;color:var(--text-muted);
+  border-bottom:3px solid transparent;margin-bottom:-2px;white-space:nowrap}
 .tab.active{color:var(--navy);border-bottom-color:var(--teal)}
-.switch{display:flex;align-items:center;gap:7px;font-size:13.5px;color:var(--text-muted);cursor:pointer}
-.switch input{width:16px;height:16px;accent-color:var(--teal);cursor:pointer}
-.split{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:16px}
-@media(max-width:960px){.split{grid-template-columns:1fr}}
 .toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:18px}
 .chip{padding:8px 16px;border-radius:999px;background:var(--surface);border:1.5px solid var(--border);
-  font-size:14px;font-weight:500;color:var(--text-muted);white-space:nowrap;transition:all .15s}
+  font-size:14px;font-weight:500;color:var(--text-muted);white-space:nowrap}
 .chip.active{background:var(--navy);border-color:var(--navy);color:#fff}
 .spacer{flex:1}
+.hint{font-size:12.5px;color:var(--text-muted)}
 
 .kpi-row{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:20px}
-.kpi{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px;
-  box-shadow:var(--shadow-sm)}
-.kpi .num{font-size:30px;font-weight:800;color:var(--navy);line-height:1.1;font-variant-numeric:tabular-nums}
+.kpi{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px;box-shadow:var(--shadow-sm)}
+.kpi .num{font-size:28px;font-weight:800;color:var(--navy);line-height:1.15;font-variant-numeric:tabular-nums}
 .kpi .label{font-size:12.5px;color:var(--text-muted);margin-top:5px}
-.kpi .sub{font-size:11.5px;color:var(--text-muted);margin-top:3px;opacity:.8}
-.kpi.ok .num{color:var(--success)}
-.kpi.bad .num{color:var(--danger)}
-.kpi.warn .num{color:var(--gold-dark)}
+.kpi .sub{font-size:11.5px;color:var(--text-muted);margin-top:3px;opacity:.85}
+.kpi.ok .num{color:var(--success)}.kpi.bad .num{color:var(--danger)}.kpi.warn .num{color:var(--gold-dark)}
 
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
-.panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
-  box-shadow:var(--shadow-sm);overflow:hidden}
+.split{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:16px}
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow-sm);overflow:hidden;margin-bottom:16px}
 .panel h3{font-size:15px;font-weight:700;color:var(--navy);padding:15px 18px;border-bottom:1px solid var(--border)}
 .panel .body{padding:6px 0}
 .panel .note{font-size:12px;color:var(--text-muted);font-weight:400;margin-right:8px}
@@ -86,12 +77,14 @@ input,select{font-family:inherit;font-size:inherit}
 table{width:100%;border-collapse:collapse;font-size:14px}
 th{text-align:right;font-size:12px;font-weight:600;color:var(--text-muted);padding:9px 18px;
   border-bottom:1px solid var(--border);white-space:nowrap;background:#fafbfc}
-td{padding:11px 18px;border-bottom:1px solid #f1f3f6;vertical-align:middle}
+td{padding:10px 18px;border-bottom:1px solid #f1f3f6;vertical-align:middle}
 tr:last-child td{border-bottom:none}
-tbody tr:hover{background:#fafbfc}
+tr.clickable{cursor:pointer}
+tr.clickable:hover{background:var(--teal-light)}
+tr.clickable td:first-child::after{content:'‹';color:var(--text-muted);margin-right:6px;font-weight:700}
 .num-cell{font-variant-numeric:tabular-nums;font-weight:600}
 
-.bar{height:7px;border-radius:999px;background:var(--border);overflow:hidden;min-width:70px}
+.bar{height:7px;border-radius:999px;background:var(--border);overflow:hidden;min-width:60px}
 .bar span{display:block;height:100%;border-radius:999px;background:var(--teal)}
 .bar.risk span{background:var(--danger)}
 
@@ -99,14 +92,36 @@ tbody tr:hover{background:#fafbfc}
 .p-ok{background:var(--success-light);color:#14532d}
 .p-review{background:var(--gold-light);color:var(--gold-dark)}
 .p-flag{background:var(--danger-light);color:#7f1d1d}
+.p-none{background:var(--navy-light);color:var(--navy)}
 
 .empty{padding:44px 20px;text-align:center;color:var(--text-muted)}
 .empty .ic{font-size:40px;opacity:.45;margin-bottom:10px}
 .loading{padding:60px;text-align:center;color:var(--text-muted)}
 
-@media (max-width:960px){
+.modal-bg{position:fixed;inset:0;background:rgba(21,35,80,.45);z-index:900;display:none;
+  align-items:flex-start;justify-content:center;padding:40px 20px;overflow-y:auto}
+.modal-bg.show{display:flex}
+.modal{background:var(--surface);border-radius:var(--radius-lg);box-shadow:var(--shadow-lg);
+  width:100%;max-width:1040px;overflow:hidden;animation:pop .15s ease-out}
+@keyframes pop{from{transform:translateY(-8px);opacity:0}to{transform:none;opacity:1}}
+.modal-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;
+  padding:18px 22px;border-bottom:1px solid var(--border);background:#fafbfc}
+.modal-head .t{font-size:18px;font-weight:700;color:var(--navy)}
+.modal-head .s{font-size:13px;color:var(--text-muted);margin-top:3px}
+.modal-x{background:var(--border);color:var(--text);width:32px;height:32px;border-radius:50%;font-size:17px;flex-shrink:0;line-height:1}
+.modal-body{max-height:64vh;overflow:auto}
+.mini-kpis{display:flex;gap:10px;flex-wrap:wrap;padding:14px 22px;border-bottom:1px solid var(--border)}
+.mini{background:var(--bg);border-radius:var(--radius-sm);padding:8px 14px;min-width:86px}
+.mini .n{font-size:18px;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums}
+.mini .l{font-size:11.5px;color:var(--text-muted)}
+
+#map{height:560px;border-radius:var(--radius);border:1px solid var(--border)}
+.legend{display:flex;gap:18px;flex-wrap:wrap;font-size:13px;color:var(--text-muted);padding:12px 4px}
+.legend i{display:inline-block;width:11px;height:11px;border-radius:50%;margin-left:6px;vertical-align:middle}
+
+@media (max-width:1000px){
   .kpi-row{grid-template-columns:repeat(2,1fr)}
-  .grid2{grid-template-columns:1fr}
+  .grid2,.split{grid-template-columns:1fr}
   .container{padding:16px}
   th,td{padding:9px 12px}
 }
@@ -143,8 +158,10 @@ tbody tr:hover{background:#fafbfc}
 <section class="screen" id="screen-main">
   <div class="container">
     <div class="tabs">
-      <button class="tab active" data-t="base" onclick="setTab('base')">מצב קיים</button>
-      <button class="tab" data-t="results" onclick="setTab('results')">תוצאות בקרה</button>
+      <button class="tab active" data-t="base"    onclick="setTab('base')">מצב קיים</button>
+      <button class="tab"        data-t="results" onclick="setTab('results')">תוצאות בקרה</button>
+      <button class="tab"        data-t="time"    onclick="setTab('time')">פעילות מפקחים</button>
+      <button class="tab"        data-t="map"     onclick="setTab('map')">מפה</button>
     </div>
     <div class="toolbar">
       <div id="range-chips" style="display:flex;gap:10px">
@@ -154,288 +171,59 @@ tbody tr:hover{background:#fafbfc}
         <button class="chip" data-d="365" onclick="setRange(365)">שנה</button>
       </div>
       <div class="spacer"></div>
-      <label class="switch"><input type="checkbox" id="inc-test" onchange="load()">
-        <span>הצג גם רשומות בדיקה</span></label>
+      <span class="hint" id="hidden-note"></span>
       <button class="chip" onclick="load()">רענן</button>
     </div>
-
     <div id="content"><div class="loading">טוען נתונים…</div></div>
   </div>
 </section>
 
+<div class="modal-bg" id="modal-bg" onclick="if(event.target===this)closeModal()">
+  <div class="modal">
+    <div class="modal-head">
+      <div><div class="t" id="modal-title">—</div><div class="s" id="modal-sub"></div></div>
+      <button class="modal-x" onclick="closeModal()">×</button>
+    </div>
+    <div id="modal-kpis"></div>
+    <div class="modal-body" id="modal-body"></div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 'use strict';
 
 const CONFIG = {
-  API_URL: 'https://script.google.com/macros/s/AKfycby_m54KMPtMeNNlikGUYpCPTRRgWMDQy-3EfsVF0CkwIvmlIk1PaQljq1lJwDmYYk3J/exec'
+  API_URL: 'https://script.google.com/macros/s/AKfycby_m54KMPtMeNNlikGUYpCPTRRgWMDQy-3EfsVF0CkwIvmlIk1PaQljq1lJwDmYYk3J/exec',
+  ACCESS_KEY: 'bb2026-K7fQm3xR9wLpZ4nT'            // ← העתק מגיליון ההגדרות
 };
 
+/* סיווג מוסד — לא מסווגים מדגם קטן מדי */
+const RULES = { MIN_CHECKS: 5, CONC_RATE: 20, CONC_ABS: 3 };
+
 const state = { token:null, name:null, days:30, tab:'base', data:null };
+const W = {};   /* מטמון לדריל דאון */
 
 const $  = s => document.querySelector(s);
-const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const $$ = s => [...document.querySelectorAll(s)];
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const pct = (a,b) => b ? Math.round(a/b*100) : 0;
 
 function fmtDur(sec){
-  if(!sec) return '—';
-  const m = Math.floor(sec/60), s = Math.round(sec%60);
-  return m + ':' + String(s).padStart(2,'0');
+  if(sec==null) return '—';
+  const m=Math.floor(sec/60), s=Math.round(sec%60);
+  return m+':'+String(s).padStart(2,'0');
 }
-
-async function apiPost(payload){
-  const r = await fetch(CONFIG.API_URL, {
-    method:'POST', body:JSON.stringify(payload),
-    headers:{'Content-Type':'text/plain;charset=utf-8'}
-  });
-  return r.json();
+function fmtHM(sec){
+  if(sec==null) return '—';
+  const h=Math.floor(sec/3600), m=Math.round(sec%3600/60);
+  return h ? h+'ש '+String(m).padStart(2,'0')+'ד' : m+'ד';
 }
-async function apiGet(action, params={}){
-  const qs = new URLSearchParams({action, token:state.token||'', ...params});
-  const r = await fetch(CONFIG.API_URL + '?' + qs);
-  return r.json();
+function clock(v){
+  if(!v) return '—';
+  const d = (v instanceof Date) ? v : new Date(v);
+  return isNaN(d) ? '—' : String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
 }
-
-/* ── התחברות ── */
-async function doLogin(){
-  const err = $('#err'), btn = $('#btn-login');
-  err.style.display='none';
-  btn.disabled=true; btn.textContent='מתחבר...';
-  try{
-    const r = await apiPost({action:'login', username:$('#u').value.trim(), password:$('#p').value});
-    if(!r.ok) throw new Error(r.error);
-    if(r.data.role !== 'admin') throw new Error('משתמש זה אינו מורשה לדשבורד ההנהלה');
-    state.token = r.data.token; state.name = r.data.name;
-    sessionStorage.setItem('bakaraDash', JSON.stringify({t:state.token, n:state.name}));
-    enter();
-  }catch(e){
-    err.textContent = e.message || 'ההתחברות נכשלה';
-    err.style.display='block';
-  }finally{
-    btn.disabled=false; btn.textContent='כניסה';
-    $('#p').value='';
-  }
-}
-
-function enter(){
-  $('#who').textContent = state.name;
-  $('#range-chips').style.visibility='hidden';
-  $('#btn-logout').style.display='';
-  $('#screen-login').classList.remove('active');
-  $('#screen-main').classList.add('active');
-  load();
-}
-
-function logout(){
-  state.token=null;
-  sessionStorage.removeItem('bakaraDash');
-  location.reload();
-}
-
-function setRange(d){
-  state.days = d;
-  document.querySelectorAll('.chip[data-d]').forEach(c=>c.classList.toggle('active', Number(c.dataset.d)===d));
-  load();
-}
-
-function setTab(t){
-  state.tab = t;
-  document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active', x.dataset.t===t));
-  $('#range-chips').style.visibility = (t==='results') ? 'visible' : 'hidden';
-  if(state.data) render();
-}
-
-/* ── טעינה ── */
-async function load(){
-  $('#content').innerHTML = '<div class="loading">טוען נתונים…</div>';
-  try{
-    const r = await apiGet('dashboard', {days:state.days, test:$('#inc-test').checked?'true':'false'});
-    if(!r.ok) throw new Error(r.error);
-    state.data = r.data;
-    render();
-  }catch(e){
-    $('#content').innerHTML = '<div class="panel"><div class="empty"><div class="ic">⚠</div>'+esc(e.message)+'</div></div>';
-  }
-}
-
-/* ── תצוגה ── */
-function render(){
-  if(state.tab==='base') return renderBase();
-  return renderResults();
-}
-
-/* ═══════ מסך א׳: מצב קיים ═══════ */
-function renderBase(){
-  const I = state.data.institutions.filter(i=>i.active);
-  const R = state.data.roster;
-  const T = state.data.totals;
-
-  const boys  = I.filter(i=>i.kind==='M').length;
-  const girls = I.filter(i=>i.kind==='F').length;
-  const noGeo = I.filter(i=>!i.geo).length;
-  const cost  = R.reduce((s,r)=>s+r.cost,0);
-  const bonus = R.filter(r=>r.bonus).length;
-
-  const kpis = `
-  <div class="kpi-row">
-    <div class="kpi"><div class="num">${I.length}</div><div class="label">מוסדות פעילים</div>
-      <div class="sub">${boys} בנים · ${girls} בנות וגנים</div></div>
-    <div class="kpi ok"><div class="num">${R.length}</div><div class="label">סייעים ברוסטר</div>
-      <div class="sub">${new Set(R.map(r=>r.aid)).size} אנשים שונים</div></div>
-    <div class="kpi"><div class="num">${new Set(R.filter(r=>r.student).map(r=>r.student)).size}</div>
-      <div class="label">תלמידים מזוכים</div><div class="sub">לפי שם תלמיד ברוסטר</div></div>
-    <div class="kpi warn"><div class="num">${bonus}</div><div class="label">מקבלי מענק התמדה</div>
-      <div class="sub">${pct(bonus,R.length)}% מהרוסטר · דגימה מוגברת</div></div>
-    <div class="kpi ${cost?'':'warn'}"><div class="num">${cost?(cost/1000).toFixed(0)+'K':'—'}</div>
-      <div class="label">עלות חודשית</div>
-      <div class="sub">${cost?'כ-'+Math.round(cost*12/1000000*10)/10+' מ׳ ש״ח בשנה':'מלא monthly_cost'}</div></div>
-  </div>`;
-
-  const warn = (noGeo || !T.attend_days) ? `
-  <div class="panel" style="border-color:#f0dd9e;background:var(--gold-light);margin-bottom:16px">
-    <div style="padding:14px 18px;font-size:14px;color:var(--gold-dark);font-weight:500">
-      ${noGeo ? '<div>· ' + noGeo + ' מוסדות ללא קואורדינטות — לא יישלח אליהם מפקח. הרץ geocodeInstitutions.</div>' : ''}
-      ${!T.attend_days ? '<div>· אין נתוני החתמה בלשונית נוכחות — ההצלבה מול דוח הנוכחות לא תפעל עדיין.</div>' : ''}
-    </div></div>` : '';
-
-  $('#content').innerHTML = kpis + warn
-    + '<div class="split">' + countPanel(R,'atype','סייעים לפי סוג','מטריצת ההתאמה נגזרת מכאן')
-    + countPanel(I,'type','מוסדות לפי סוג','')
-    + countPanel(R,'inst_type','סייעים לפי סוג מוסד','איפה מרוכז התקציב') + '</div>'
-    + instRosterPanel(I,R);
-}
-
-function countPanel(arr,key,title,note){
-  const g = group(arr,key);
-  const rows = Object.keys(g).map(k=>({k:k,n:g[k].length})).sort((a,b)=>b.n-a.n);
-  const tot = arr.length, max = Math.max(...rows.map(r=>r.n),1);
-  return `<div class="panel"><h3>${title}${note?' <span class="note">'+note+'</span>':''}</h3>
-    <div class="body"><table><tbody>${rows.map(r=>`<tr>
-      <td style="width:38%">${esc(r.k)}</td>
-      <td class="num-cell" style="width:40px">${r.n}</td>
-      <td class="num-cell" style="width:46px;color:var(--text-muted);font-size:12px">${pct(r.n,tot)}%</td>
-      <td><div class="bar"><span style="width:${r.n/max*100}%"></span></div></td>
-    </tr>`).join('')}</tbody></table></div></div>`;
-}
-
-function instRosterPanel(I,R){
-  const g = group(R,'institution');
-  const rows = I.map(i=>{
-    const a = g[i.name] || [];
-    const t = {};
-    a.forEach(x=>t[x.atype]=(t[x.atype]||0)+1);
-    return {name:i.name, kind:i.kind==='M'?'בנים':'בנות/גנים', type:i.type, n:a.length,
-            geo:i.geo, det:Object.keys(t).map(k=>k+' '+t[k]).join(' · ') || '—',
-            cost:a.reduce((s,x)=>s+x.cost,0)};
-  }).sort((a,b)=>b.n-a.n);
-
-  return `<div class="panel"><h3>מוסדות ופריסת סייעים
-      <span class="note">מוסד בלי סייעים לא ייכנס להגרלת השיגור</span></h3>
-    <div class="body" style="overflow-x:auto"><table><thead><tr>
-      <th>מוסד</th><th>מגזר</th><th>סוג</th><th>סייעים</th><th>פירוט</th><th>עלות חודשית</th><th>מיקום</th>
-    </tr></thead><tbody>${rows.map(r=>`<tr>
-      <td>${esc(r.name)}</td><td style="white-space:nowrap">${r.kind}</td><td style="white-space:nowrap">${esc(r.type)}</td>
-      <td class="num-cell" style="color:${r.n?'inherit':'var(--danger)'}">${r.n}</td>
-      <td style="font-size:13px;color:var(--text-muted)">${esc(r.det)}</td>
-      <td class="num-cell">${r.cost?r.cost.toLocaleString():'—'}</td>
-      <td>${r.geo?'<span class="pill p-ok">✓</span>':'<span class="pill p-flag">חסר</span>'}</td>
-    </tr>`).join('')}</tbody></table></div></div>`;
-}
-
-/* ═══════ מסך ב׳: תוצאות בקרה ═══════ */
-function renderResults(){
-  const C = state.data.checks, R = state.data.roster, I = state.data.institutions.filter(i=>i.active);
-
-  if(!C.length){
-    $('#content').innerHTML =
-      '<div class="panel"><div class="empty"><div class="ic">◷</div>'+
-      '<div style="font-weight:600;color:var(--navy);font-size:17px">אין בדיקות בטווח הנבחר</div>'+
-      '<div style="margin-top:8px">אם ביצעת בדיקות דרך index-test — סמן למעלה «הצג גם רשומות בדיקה»</div></div></div>';
-    return;
-  }
-
-  const flags   = C.filter(c=>c.verdict==='flag');
-  const reviews = C.filter(c=>c.verdict==='review');
-  const avgRep  = C.reduce((s,c)=>s+c.t_report,0)/C.length;
-  const covered = new Set(C.map(c=>c.assistant)).size;
-  const instCov = new Set(C.map(c=>c.institution)).size;
-  const tests   = C.filter(c=>c.is_test).length;
-
-  const kpis = `
-  <div class="kpi-row">
-    <div class="kpi"><div class="num">${C.length}</div><div class="label">בדיקות שבוצעו</div>
-      <div class="sub">${tests?tests+' מתוכן בדיקת מערכת':state.days+' הימים האחרונים'}</div></div>
-    <div class="kpi bad"><div class="num">${flags.length}</div><div class="label">חריגות</div>
-      <div class="sub">${pct(flags.length,C.length)}% מהבדיקות</div></div>
-    <div class="kpi warn"><div class="num">${reviews.length}</div><div class="label">לבדיקה חוזרת</div>
-      <div class="sub">${pct(reviews.length,C.length)}% מהבדיקות</div></div>
-    <div class="kpi ok"><div class="num">${covered}/${R.length}</div><div class="label">כיסוי סייעים</div>
-      <div class="sub">${instCov} מתוך ${I.length} מוסדות נבדקו</div></div>
-    <div class="kpi"><div class="num">${fmtDur(avgRep)}</div><div class="label">זמן חשיפה→דיווח</div>
-      <div class="sub">ממוצע, דקות</div></div>
-  </div>`;
-
-  $('#content').innerHTML = kpis
-    + '<div class="grid2">' + inspectorPanel(C) + institutionResultPanel(C,I) + '</div>'
-    + '<div class="grid2">' + activityPanel(C) + typePanel(C) + '</div>'
-    + recentPanel(C);
-}
-
-function institutionResultPanel(C,I){
-  const g = group(C,'institution');
-  const checked = Object.keys(g).map(k=>{
-    const a=g[k], f=a.filter(c=>c.verdict==='flag').length;
-    return {name:k, n:a.length, f:f, rate:pct(f,a.length),
-            status: f===0?'עבר':(f/a.length>0.25?'נכשל':'ממצאים')};
-  }).sort((x,y)=>y.rate-x.rate || y.n-x.n);
-
-  const never = I.filter(i=>!g[i.name]).length;
-  const sp = s => s==='עבר' ? '<span class="pill p-ok">עבר</span>'
-                : s==='נכשל' ? '<span class="pill p-flag">נכשל</span>'
-                : '<span class="pill p-review">ממצאים</span>';
-
-  return `<div class="panel">
-    <h3>מוסדות לפי תוצאה <span class="note">${never} מוסדות טרם נבדקו כלל</span></h3>
-    <div class="body" style="max-height:420px;overflow-y:auto"><table><thead><tr>
-      <th>מוסד</th><th>בדיקות</th><th>חריגות</th><th style="width:100px">שיעור</th><th>סטטוס</th>
-    </tr></thead><tbody>${checked.map(r=>`<tr>
-      <td>${esc(r.name)}</td><td class="num-cell">${r.n}</td><td class="num-cell">${r.f}</td>
-      <td><div style="display:flex;align-items:center;gap:8px">
-        <div class="bar ${r.rate?'risk':''}"><span style="width:${r.rate}%"></span></div>
-        <span class="num-cell" style="font-size:12px">${r.rate}%</span></div></td>
-      <td>${sp(r.status)}</td>
-    </tr>`).join('')}</tbody></table></div></div>`;
-}
-
-function group(arr, key){
-  const m = {};
-  arr.forEach(x => { const k = x[key] || '—'; (m[k] = m[k] || []).push(x); });
-  return m;
-}
-
-/* השוואת מפקחים — כולל המדד שמזהה מפקח שלא באמת בודק */
-function inspectorPanel(C){
-  const g = group(C,'inspector');
-  const rows = Object.keys(g).map(k=>{
-    const a = g[k];
-    const f = a.filter(c=>c.verdict==='flag').length;
-    const days = new Set(a.map(c=>c.date)).size;
-    return {name:k, n:a.length, perDay:(a.length/Math.max(days,1)).toFixed(1),
-            flagRate:pct(f,a.length), avg:a.reduce((s,c)=>s+c.t_report,0)/a.length};
-  }).sort((x,y)=>y.n-x.n);
-
-  return `<div class="panel">
-    <h3>מפקחים <span class="note">שיעור חריגות חריג לכאן או לכאן שווה בירור</span></h3>
-    <div class="body"><table><thead><tr>
-      <th>מפקח</th><th>בדיקות</th><th>ליום</th><th>% חריגות</th><th>זמן דיווח</th>
-    </tr></thead><tbody>${rows.map(r=>`<tr>
-      <td>${esc(r.name)}</td>
-      <td class="num-cell">${r.n}</td>
-      <td class="num-cell">${r.perDay}</td>
-      <td class="num-cell" style="color:${r.flagRate>25?'var(--danger)':r.flagRate===0?'var(--gold-dark)':'inherit'}">${r.flagRate}%</td>
-      <td class="num-cell">${fmtDur(r.avg)}</td>
-    </tr>`).join('')}</tbody></table></div></div>`;
-}
-
 
 const ACT_LABEL = {
   with_student_class:'צמוד לתלמיד בכיתה', with_student_out:'צמוד מחוץ לכיתה',
@@ -443,77 +231,634 @@ const ACT_LABEL = {
   other_students:'מסייע לתלמידים אחרים', teaching:'מלמד כיתה',
   admin:'תפקיד מנהלי', idle:'לא בפעילות', other:'פעילות אחרת'
 };
-const PRES_LABEL = {
-  found:'נמצא', not_found:'לא נמצא', substitute:'ממלא מקום',
-  approved:'היעדרות מאושרת', blocked:'לא ניתן לברר'
-};
+const PRES_LABEL = { found:'נמצא', not_found:'לא נמצא', substitute:'ממלא מקום',
+  approved:'היעדרות מאושרת', blocked:'לא ניתן לברר' };
+const STUD_LABEL = { present:'נוכח', absent:'נעדר', released:'שוחרר מוקדם', unknown:'לא ידוע' };
+const VER_LABEL  = { teacher:'מחנכת', principal:'מנהל', office:'מזכירות', direct:'תצפית בלבד' };
 
-function activityPanel(C){
-  const g = group(C,'activity');
-  const rows = Object.keys(g).filter(k=>k!=='—')
-    .map(k=>({k:ACT_LABEL[k]||k, n:g[k].length}))
-    .sort((a,b)=>b.n-a.n);
-  const max = Math.max(...rows.map(r=>r.n), 1);
+/* ═══ API ═══ */
+async function apiPost(payload){
+  payload.key = CONFIG.ACCESS_KEY;
+  const r = await fetch(CONFIG.API_URL,{method:'POST',body:JSON.stringify(payload),
+    headers:{'Content-Type':'text/plain;charset=utf-8'}});
+  return r.json();
+}
+async function apiGet(action, params={}){
+  const qs = new URLSearchParams({action, key:CONFIG.ACCESS_KEY, token:state.token||'', ...params});
+  const r = await fetch(CONFIG.API_URL + '?' + qs);
+  return r.json();
+}
 
-  return `<div class="panel">
-    <h3>מה הסייעים עושים בפועל</h3>
-    <div class="body"><table><tbody>${rows.map(r=>`<tr>
-      <td style="width:52%">${esc(r.k)}</td>
+/* ═══ התחברות ═══ */
+async function doLogin(){
+  const err=$('#err'), btn=$('#btn-login');
+  err.style.display='none'; btn.disabled=true; btn.textContent='מתחבר...';
+  try{
+    const r = await apiPost({action:'login', username:$('#u').value.trim(), password:$('#p').value});
+    if(!r.ok) throw new Error(r.error);
+    if(r.data.role!=='admin') throw new Error('משתמש זה אינו מורשה לדשבורד ההנהלה');
+    state.token=r.data.token; state.name=r.data.name;
+    sessionStorage.setItem('bakaraDash', JSON.stringify({t:state.token,n:state.name}));
+    enter();
+  }catch(e){ err.textContent=e.message||'ההתחברות נכשלה'; err.style.display='block'; }
+  finally{ btn.disabled=false; btn.textContent='כניסה'; $('#p').value=''; }
+}
+function enter(){
+  $('#who').textContent=state.name;
+  $('#btn-logout').style.display='';
+  $('#screen-login').classList.remove('active');
+  $('#screen-main').classList.add('active');
+  $('#range-chips').style.visibility='hidden';
+  load();
+}
+function logout(){ sessionStorage.removeItem('bakaraDash'); location.reload(); }
+
+function setRange(d){
+  state.days=d;
+  $$('.chip[data-d]').forEach(c=>c.classList.toggle('active',Number(c.dataset.d)===d));
+  load();
+}
+function setTab(t){
+  state.tab=t;
+  $$('.tab').forEach(x=>x.classList.toggle('active',x.dataset.t===t));
+  $('#range-chips').style.visibility = (t==='base') ? 'hidden' : 'visible';
+  if(state.data) render();
+}
+
+async function load(){
+  $('#content').innerHTML='<div class="loading">טוען נתונים…</div>';
+  try{
+    const r = await apiGet('dashboard',{days:state.days});
+    if(!r.ok) throw new Error(r.error);
+    state.data=r.data;
+    const T=r.data.totals||{};
+    const bits=[];
+    if(T.hidden_tests) bits.push(T.hidden_tests+' רשומות בדיקה מוסתרות');
+    if(T.test_mode)    bits.push('⚠ מצב בדיקה דלוק בשרת');
+    if(!T.auth_on)     bits.push('⚠ אימות סיסמה כבוי');
+    $('#hidden-note').innerHTML = bits.join(' · ');
+    $('#hidden-note').style.color = (T.test_mode||!T.auth_on) ? 'var(--danger)' : '';
+    render();
+  }catch(e){
+    $('#content').innerHTML='<div class="panel"><div class="empty"><div class="ic">⚠</div>'+esc(e.message)+'</div></div>';
+  }
+}
+
+/* ═══ דריל דאון ═══ */
+function openModal(title, sub, kpis, html){
+  $('#modal-title').textContent=title;
+  $('#modal-sub').textContent=sub||'';
+  $('#modal-kpis').innerHTML = (kpis&&kpis.length)
+    ? '<div class="mini-kpis">'+kpis.map(k=>`<div class="mini"><div class="n">${esc(k.n)}</div><div class="l">${esc(k.l)}</div></div>`).join('')+'</div>' : '';
+  $('#modal-body').innerHTML=html;
+  $('#modal-bg').classList.add('show');
+}
+function closeModal(){ $('#modal-bg').classList.remove('show'); }
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeModal(); });
+
+function group(arr,key){
+  const m={}; arr.forEach(x=>{const k=x[key]||'—';(m[k]=m[k]||[]).push(x);}); return m;
+}
+
+function rosterTable(list){
+  if(!list.length) return '<div class="empty">אין רשומות</div>';
+  const C=state.data.checks;
+  return `<table><thead><tr>
+    <th>שם הסייע</th><th>ת.ז</th><th>סוג</th><th>מוסד</th><th>תלמיד</th><th>כיתה</th><th>נבדק</th>
+  </tr></thead><tbody>${list.map(r=>{
+    const a=C.filter(c=>c.assistant===r.name);
+    const f=a.filter(c=>c.verdict==='flag').length;
+    return `<tr><td>${esc(r.name)}</td><td class="num-cell">${esc(r.aid)}</td>
+      <td>${esc(r.atype)}</td><td>${esc(r.institution)}</td>
+      <td>${esc(r.student)}</td><td>${esc(r.klass)}</td>
+      <td>${a.length ? (f?`<span class="pill p-flag">${a.length} · ${f} חריגות</span>`
+                         :`<span class="pill p-ok">${a.length} תקין</span>`)
+                     : '<span class="pill p-none">טרם נבדק</span>'}</td></tr>`;
+  }).join('')}</tbody></table>`;
+}
+
+function checksTable(list){
+  if(!list.length) return '<div class="empty">אין בדיקות</div>';
+  const vp=v=>v==='flag'?'<span class="pill p-flag">חריגה</span>'
+           :v==='review'?'<span class="pill p-review">לבדיקה חוזרת</span>'
+           :'<span class="pill p-ok">תקין</span>';
+  return `<table><thead><tr>
+    <th>תאריך</th><th>מפקח</th><th>מוסד</th><th>סייע</th><th>סוג</th>
+    <th>מצב</th><th>פעילות</th><th>תלמיד</th><th>אימות</th><th>תוצאה</th>
+  </tr></thead><tbody>${list.slice().reverse().map(c=>`<tr>
+    <td style="white-space:nowrap">${esc(c.date)}</td>
+    <td style="white-space:nowrap">${esc(c.inspector)}</td>
+    <td>${esc(c.institution)}</td>
+    <td style="white-space:nowrap">${esc(c.assistant)}</td>
+    <td style="white-space:nowrap">${esc(c.atype)}</td>
+    <td style="white-space:nowrap">${esc(PRES_LABEL[c.presence]||c.presence)}</td>
+    <td>${esc(ACT_LABEL[c.activity]||'—')}</td>
+    <td style="white-space:nowrap">${esc(STUD_LABEL[c.student_status]||'—')}</td>
+    <td style="white-space:nowrap">${esc(c.verified_name||VER_LABEL[c.verified_by]||'—')}</td>
+    <td>${vp(c.verdict)}</td></tr>`).join('')}</tbody></table>`;
+}
+
+function drillChecks(title, sub, list){
+  const f=list.filter(c=>c.verdict==='flag').length;
+  const r=list.filter(c=>c.verdict==='review').length;
+  const nf=list.filter(c=>c.presence==='not_found').length;
+  openModal(title, sub, [
+    {n:list.length,l:'בדיקות'},{n:f,l:'חריגות'},{n:r,l:'לבדיקה חוזרת'},
+    {n:nf,l:'לא נמצא'},{n:new Set(list.map(c=>c.assistant)).size,l:'סייעים'},
+    {n:new Set(list.map(c=>c.institution)).size,l:'מוסדות'}
+  ], checksTable(list));
+}
+
+/* ═══ ניתוב ═══ */
+function render(){
+  if(state.tab==='base')    return renderBase();
+  if(state.tab==='results') return renderResults();
+  if(state.tab==='time')    return renderTime();
+  return renderMap();
+}
+
+/* ══════ מצב קיים ══════ */
+function renderBase(){
+  const I=state.data.institutions.filter(i=>i.active), R=state.data.roster, T=state.data.totals||{};
+  const boys=I.filter(i=>i.kind==='M').length, girls=I.filter(i=>i.kind==='F').length;
+  const noGeo=I.filter(i=>!i.geo).length;
+  const people=new Set(R.map(r=>r.aid)).size;
+  const students=new Set(R.filter(r=>r.student).map(r=>r.student)).size;
+
+  W.instAll=I; W.rosterAll=R;
+
+  const kpis=`<div class="kpi-row">
+    <div class="kpi"><div class="num">${I.length}</div><div class="label">מוסדות פעילים</div>
+      <div class="sub">${boys} בנים · ${girls} בנות וגנים</div></div>
+    <div class="kpi ok"><div class="num">${people}</div><div class="label">סייעים</div>
+      <div class="sub">${R.length} שיבוצים</div></div>
+    <div class="kpi"><div class="num">${students}</div><div class="label">תלמידים מזוכים</div>
+      <div class="sub">לפי שם תלמיד ברוסטר</div></div>
+    <div class="kpi"><div class="num">${(R.length/Math.max(I.length,1)).toFixed(1)}</div>
+      <div class="label">שיבוצים למוסד</div><div class="sub">ממוצע</div></div>
+    <div class="kpi ${noGeo?'bad':'ok'}"><div class="num">${I.length-noGeo}</div>
+      <div class="label">מוכנים לשיגור</div>
+      <div class="sub">${noGeo?noGeo+' ללא קואורדינטות':'כל המוסדות תקינים'}</div></div>
+  </div>`;
+
+  const warn=(noGeo||!T.attend_days)?`<div class="panel" style="border-color:#f0dd9e;background:var(--gold-light)">
+    <div style="padding:14px 18px;font-size:14px;color:var(--gold-dark);font-weight:500">
+      ${noGeo?'<div>· '+noGeo+' מוסדות ללא קואורדינטות — לא ייכללו בהגרלת השיגור. הרץ geocodeInstitutions.</div>':''}
+      ${!T.attend_days?'<div>· אין נתוני החתמה בלשונית נוכחות — ההצלבה מול דוח הנוכחות לא תפעל.</div>':''}
+    </div></div>`:'';
+
+  $('#content').innerHTML = kpis + warn
+    + '<div class="split">'
+    + countPanel('atype', R, 'סייעים לפי סוג', 'לחץ לרשימת הסייעים')
+    + countPanel('type',  I, 'מוסדות לפי סוג', 'לחץ לרשימת המוסדות')
+    + countPanel('kindHe',R.map(r=>({...r,kindHe:r.kind==='M'?'בנים':'בנות וגנים'})),
+                 'שיבוצים לפי מגזר','לחץ לרשימה')
+    + '</div>'
+    + '<div class="grid2">'
+    + countPanel('inst_type', R, 'שיבוצים לפי סוג מוסד','לחץ לרשימה')
+    + countPanel('klass', R, 'שיבוצים לפי כיתה','לחץ לרשימה')
+    + '</div>'
+    + instRosterPanel(I,R);
+}
+
+function countPanel(key, arr, title, note){
+  const g=group(arr,key);
+  const rows=Object.keys(g).map(k=>({k,n:g[k].length})).sort((a,b)=>b.n-a.n);
+  const tot=arr.length, max=Math.max(...rows.map(r=>r.n),1);
+  W['g_'+key]=g;
+  const isInst = arr===W.instAll;
+  return `<div class="panel"><h3>${title}${note?' <span class="note">'+note+'</span>':''}</h3>
+    <div class="body" style="max-height:340px;overflow-y:auto"><table><tbody>${rows.map(r=>`<tr class="clickable"
+      onclick="drillCount('${key}','${esc(r.k).replace(/'/g,'&#39;')}',${isInst})">
+      <td style="width:38%">${esc(r.k)}</td>
       <td class="num-cell" style="width:44px">${r.n}</td>
+      <td class="num-cell" style="width:46px;color:var(--text-muted);font-size:12px">${pct(r.n,tot)}%</td>
       <td><div class="bar"><span style="width:${r.n/max*100}%"></span></div></td>
     </tr>`).join('')}</tbody></table></div></div>`;
 }
 
+function drillCount(key,val,isInst){
+  const list=(W['g_'+key]||{})[val]||[];
+  if(isInst){
+    openModal(val, list.length+' מוסדות',
+      [{n:list.length,l:'מוסדות'},
+       {n:W.rosterAll.filter(r=>list.some(i=>i.name===r.institution)).length,l:'שיבוצים'}],
+      `<table><thead><tr><th>מוסד</th><th>סמל</th><th>מגזר</th><th>שיבוצים</th><th>מיקום</th></tr></thead>
+       <tbody>${list.map(i=>{
+         const n=W.rosterAll.filter(r=>r.institution===i.name).length;
+         return `<tr><td>${esc(i.name)}</td><td class="num-cell">${esc(i.symbol)}</td>
+           <td>${i.kind==='M'?'בנים':'בנות/גנים'}</td><td class="num-cell">${n}</td>
+           <td>${i.geo?'<span class="pill p-ok">✓</span>':'<span class="pill p-flag">חסר</span>'}</td></tr>`;
+       }).join('')}</tbody></table>`);
+  } else {
+    openModal(val, list.length+' שיבוצים', [
+      {n:new Set(list.map(r=>r.aid)).size,l:'סייעים'},
+      {n:new Set(list.map(r=>r.institution)).size,l:'מוסדות'},
+      {n:new Set(list.map(r=>r.student)).size,l:'תלמידים'}
+    ], rosterTable(list));
+  }
+}
+
+function instRosterPanel(I,R){
+  const g=group(R,'institution');
+  const rows=I.map(i=>{
+    const a=g[i.name]||[], t={};
+    a.forEach(x=>t[x.atype]=(t[x.atype]||0)+1);
+    return {name:i.name,kind:i.kind==='M'?'בנים':'בנות/גנים',type:i.type,n:a.length,geo:i.geo,
+            det:Object.keys(t).map(k=>k+' '+t[k]).join(' · ')||'—'};
+  }).sort((a,b)=>b.n-a.n);
+  return `<div class="panel"><h3>מוסדות ופריסת סייעים
+      <span class="note">לחץ על שורה לרשימת הסייעים · מוסד בלי סייעים לא ייכנס להגרלה</span></h3>
+    <div class="body" style="overflow-x:auto"><table><thead><tr>
+      <th>מוסד</th><th>מגזר</th><th>סוג</th><th>שיבוצים</th><th>פירוט</th><th>מיקום</th>
+    </tr></thead><tbody>${rows.map(r=>`<tr class="clickable" onclick="drillInstRoster('${esc(r.name).replace(/'/g,'&#39;')}')">
+      <td>${esc(r.name)}</td><td style="white-space:nowrap">${r.kind}</td>
+      <td style="white-space:nowrap">${esc(r.type)}</td>
+      <td class="num-cell" style="color:${r.n?'inherit':'var(--danger)'}">${r.n}</td>
+      <td style="font-size:13px;color:var(--text-muted)">${esc(r.det)}</td>
+      <td>${r.geo?'<span class="pill p-ok">✓</span>':'<span class="pill p-flag">חסר</span>'}</td>
+    </tr>`).join('')}</tbody></table></div></div>`;
+}
+function drillInstRoster(name){
+  const list=state.data.roster.filter(r=>r.institution===name);
+  const C=state.data.checks.filter(c=>c.institution===name);
+  openModal(name, list.length+' שיבוצים במוסד', [
+    {n:new Set(list.map(r=>r.aid)).size,l:'סייעים'},
+    {n:C.length,l:'בדיקות'},
+    {n:C.filter(c=>c.verdict==='flag').length,l:'חריגות'}
+  ], rosterTable(list));
+}
+
+/* ══════ תוצאות בקרה ══════ */
+function renderResults(){
+  const C=state.data.checks, R=state.data.roster, I=state.data.institutions.filter(i=>i.active);
+  if(!C.length){
+    $('#content').innerHTML='<div class="panel"><div class="empty"><div class="ic">◷</div>'+
+      '<div style="font-weight:600;color:var(--navy);font-size:17px">אין בדיקות בטווח הנבחר</div>'+
+      '<div style="margin-top:8px">בחר טווח ארוך יותר</div></div></div>';
+    return;
+  }
+  const flags=C.filter(c=>c.verdict==='flag'), reviews=C.filter(c=>c.verdict==='review');
+  const people=new Set(R.map(r=>r.aid)).size;
+  const covered=new Set(C.map(c=>c.assistant)).size;
+  const visits=new Set(C.map(c=>c.inspector+'|'+c.date+'|'+c.institution)).size;
+
+  $('#content').innerHTML = `<div class="kpi-row">
+    <div class="kpi"><div class="num">${C.length}</div><div class="label">בדיקות סייעים</div>
+      <div class="sub">${visits} ביקורים במוסדות</div></div>
+    <div class="kpi bad"><div class="num">${flags.length}</div><div class="label">חריגות</div>
+      <div class="sub">${pct(flags.length,C.length)}% מהבדיקות</div></div>
+    <div class="kpi warn"><div class="num">${reviews.length}</div><div class="label">לבדיקה חוזרת</div>
+      <div class="sub">${pct(reviews.length,C.length)}%</div></div>
+    <div class="kpi ok"><div class="num">${covered}/${people}</div><div class="label">כיסוי סייעים</div>
+      <div class="sub">${pct(covered,people)}% נבדקו לפחות פעם</div></div>
+    <div class="kpi"><div class="num">${C.filter(c=>c.presence==='not_found').length}</div>
+      <div class="label">לא נמצאו במוסד</div><div class="sub">כולל מקרים מוצדקים</div></div>
+  </div>`
+  + '<div class="grid2">'+inspectorPanel(C)+institutionResultPanel(C,I)+'</div>'
+  + '<div class="grid2">'+activityPanel(C)+typePanel(C)+'</div>'
+  + blockedPanel()
+  + assistantPanel(C);
+}
+
+function inspectorPanel(C){
+  const g=group(C,'inspector');
+  const rows=Object.keys(g).map(k=>{
+    const a=g[k], f=a.filter(c=>c.verdict==='flag').length;
+    const days=new Set(a.map(c=>c.date)).size;
+    const visits=new Set(a.map(c=>c.date+'|'+c.institution)).size;
+    return {name:k,n:a.length,visits,days,perDay:(a.length/Math.max(days,1)).toFixed(1),
+            flagRate:pct(f,a.length),avg:a.reduce((s,c)=>s+c.t_report,0)/a.length};
+  }).sort((x,y)=>y.n-x.n);
+  return `<div class="panel"><h3>מפקחים
+      <span class="note">״בדיקות״ = סייעים שנבדקו · 0% חריגות חשוד לא פחות משיעור גבוה</span></h3>
+    <div class="body"><table><thead><tr>
+      <th>מפקח</th><th>ימים</th><th>ביקורים</th><th>בדיקות</th><th>ליום</th><th>% חריגות</th><th>זמן דיווח</th>
+    </tr></thead><tbody>${rows.map(r=>`<tr class="clickable" onclick="drillInspector('${esc(r.name).replace(/'/g,'&#39;')}')">
+      <td>${esc(r.name)}</td><td class="num-cell">${r.days}</td><td class="num-cell">${r.visits}</td>
+      <td class="num-cell">${r.n}</td><td class="num-cell">${r.perDay}</td>
+      <td class="num-cell" style="color:${r.flagRate>25?'var(--danger)':r.flagRate===0?'var(--gold-dark)':'inherit'}">${r.flagRate}%</td>
+      <td class="num-cell">${fmtDur(r.avg)}</td>
+    </tr>`).join('')}</tbody></table></div></div>`;
+}
+function drillInspector(name){
+  drillChecks(name,'כל הבדיקות בטווח',state.data.checks.filter(c=>c.inspector===name));
+}
+
+function classify(n,f){
+  if(n<RULES.MIN_CHECKS) return {t:'מדגם קטן',c:'p-none'};
+  if(f===0) return {t:'תקין',c:'p-ok'};
+  if(f>=RULES.CONC_ABS && pct(f,n)>=RULES.CONC_RATE) return {t:'ריכוז ממצאים',c:'p-flag'};
+  return {t:'ממצאים',c:'p-review'};
+}
+
+function institutionResultPanel(C,I){
+  const g=group(C,'institution');
+  const rows=Object.keys(g).map(k=>{
+    const a=g[k], f=a.filter(c=>c.verdict==='flag').length;
+    return {name:k,n:a.length,f,rate:pct(f,a.length),cls:classify(a.length,f)};
+  }).sort((x,y)=>y.rate-x.rate||y.n-x.n);
+  const never=I.filter(i=>!g[i.name]).length;
+  return `<div class="panel"><h3>מוסדות לפי תוצאה
+      <span class="note">${never} טרם נבדקו · ״ריכוז ממצאים״ = ${RULES.CONC_ABS}+ חריגות וגם ${RULES.CONC_RATE}%+, ורק מ-${RULES.MIN_CHECKS} בדיקות</span></h3>
+    <div class="body" style="max-height:420px;overflow-y:auto"><table><thead><tr>
+      <th>מוסד</th><th>בדיקות</th><th>חריגות</th><th style="width:96px">שיעור</th><th>סטטוס</th>
+    </tr></thead><tbody>${rows.map(r=>`<tr class="clickable" onclick="drillInstitution('${esc(r.name).replace(/'/g,'&#39;')}')">
+      <td>${esc(r.name)}</td><td class="num-cell">${r.n}</td><td class="num-cell">${r.f}</td>
+      <td><div style="display:flex;align-items:center;gap:8px">
+        <div class="bar ${r.rate?'risk':''}"><span style="width:${r.rate}%"></span></div>
+        <span class="num-cell" style="font-size:12px">${r.rate}%</span></div></td>
+      <td><span class="pill ${r.cls.c}">${r.cls.t}</span></td>
+    </tr>`).join('')}</tbody></table></div></div>`;
+}
+function drillInstitution(name){
+  drillChecks(name,'כל הבדיקות במוסד',state.data.checks.filter(c=>c.institution===name));
+}
+
+function activityPanel(C){
+  const g=group(C,'activity');
+  const rows=Object.keys(g).filter(k=>k&&k!=='—')
+    .map(k=>({k,label:ACT_LABEL[k]||k,n:g[k].length})).sort((a,b)=>b.n-a.n);
+  const max=Math.max(...rows.map(r=>r.n),1);
+  return `<div class="panel"><h3>מה הסייעים עושים בפועל <span class="note">לחץ לרשימת הבדיקות</span></h3>
+    <div class="body"><table><tbody>${rows.map(r=>`<tr class="clickable" onclick="drillActivity('${r.k}')">
+      <td style="width:50%">${esc(r.label)}</td>
+      <td class="num-cell" style="width:44px">${r.n}</td>
+      <td class="num-cell" style="width:44px;color:var(--text-muted);font-size:12px">${pct(r.n,C.length)}%</td>
+      <td><div class="bar"><span style="width:${r.n/max*100}%"></span></div></td>
+    </tr>`).join('')}</tbody></table></div></div>`;
+}
+function drillActivity(k){
+  drillChecks(ACT_LABEL[k]||k,'בדיקות שבהן דווחה פעילות זו',state.data.checks.filter(c=>c.activity===k));
+}
+
 function typePanel(C){
-  const g = group(C,'atype');
-  const rows = Object.keys(g).map(k=>{
+  const g=group(C,'atype');
+  const rows=Object.keys(g).map(k=>{
     const a=g[k], f=a.filter(c=>c.verdict==='flag').length,
           nf=a.filter(c=>c.presence==='not_found').length;
-    return {k:k, n:a.length, f:f, nf:nf, rate:pct(f,a.length)};
+    return {k,n:a.length,f,nf,rate:pct(f,a.length)};
   }).sort((a,b)=>b.n-a.n);
-
-  return `<div class="panel">
-    <h3>לפי סוג סייע <span class="note">איפה מרוכזת הבעיה</span></h3>
+  return `<div class="panel"><h3>לפי סוג סייע <span class="note">איפה מרוכזת הבעיה</span></h3>
     <div class="body"><table><thead><tr>
       <th>סוג</th><th>בדיקות</th><th>לא נמצא</th><th>חריגות</th><th>שיעור</th>
-    </tr></thead><tbody>${rows.map(r=>`<tr>
-      <td>${esc(r.k)}</td>
-      <td class="num-cell">${r.n}</td>
-      <td class="num-cell">${r.nf}</td>
-      <td class="num-cell">${r.f}</td>
-      <td class="num-cell">${r.rate}%</td>
+    </tr></thead><tbody>${rows.map(r=>`<tr class="clickable" onclick="drillType('${esc(r.k).replace(/'/g,'&#39;')}')">
+      <td>${esc(r.k)}</td><td class="num-cell">${r.n}</td><td class="num-cell">${r.nf}</td>
+      <td class="num-cell">${r.f}</td><td class="num-cell">${r.rate}%</td>
+    </tr>`).join('')}</tbody></table></div></div>`;
+}
+function drillType(k){
+  drillChecks(k,'כל הבדיקות לסוג סייע זה',state.data.checks.filter(c=>c.atype===k));
+}
+
+function blockedPanel(){
+  const B=state.data.blocked||[];
+  if(!B.length) return '';
+  const g=group(B,'institution');
+  const rows=Object.keys(g).map(k=>({k,n:g[k].length})).sort((a,b)=>b.n-a.n);
+  return `<div class="panel" style="border-color:#f0dd9e">
+    <h3 style="background:var(--gold-light);color:var(--gold-dark)">סירובי כניסה
+      <span class="note">האות החזק ביותר להתארגנות מוסדית מראש</span></h3>
+    <div class="body"><table><thead><tr><th>מוסד</th><th>סירובים</th><th>תאריכים</th></tr></thead>
+    <tbody>${rows.map(r=>`<tr><td>${esc(r.k)}</td><td class="num-cell">${r.n}</td>
+      <td style="font-size:13px;color:var(--text-muted)">${g[r.k].map(x=>esc(x.date)).join(' · ')}</td>
     </tr>`).join('')}</tbody></table></div></div>`;
 }
 
-function recentPanel(C){
-  const rows = C.slice().reverse().slice(0,40);
-  const vp = v => v==='flag' ? '<span class="pill p-flag">חריגה</span>'
-                : v==='review' ? '<span class="pill p-review">לבדיקה חוזרת</span>'
-                : '<span class="pill p-ok">תקין</span>';
+function assistantPanel(C){
+  const g=group(C,'assistant');
+  const rows=Object.keys(g).map(k=>{
+    const a=g[k], f=a.filter(c=>c.verdict==='flag').length;
+    return {name:k,inst:a[0].institution,atype:a[0].atype,n:a.length,f,
+            nf:a.filter(c=>c.presence==='not_found').length};
+  }).filter(r=>r.f>0).sort((a,b)=>b.f-a.f||b.n-a.n).slice(0,40);
+  if(!rows.length) return '';
+  const rep=rows.filter(r=>r.f>=2).length;
+  return `<div class="panel"><h3>סייעים עם חריגות
+      <span class="note">${rep} עם יותר מחריגה אחת — אלה שדורשים טיפול, לא מקרה חד-פעמי</span></h3>
+    <div class="body" style="max-height:440px;overflow:auto"><table><thead><tr>
+      <th>שם הסייע</th><th>סוג</th><th>מוסד</th><th>בדיקות</th><th>לא נמצא</th><th>חריגות</th>
+    </tr></thead><tbody>${rows.map(r=>`<tr class="clickable" onclick="drillAssistant('${esc(r.name).replace(/'/g,'&#39;')}')">
+      <td>${esc(r.name)}</td><td>${esc(r.atype)}</td><td>${esc(r.inst)}</td>
+      <td class="num-cell">${r.n}</td><td class="num-cell">${r.nf}</td>
+      <td class="num-cell" style="color:${r.f>=2?'var(--danger)':'inherit'}">${r.f}</td>
+    </tr>`).join('')}</tbody></table></div></div>`;
+}
+function drillAssistant(name){
+  drillChecks(name,'כל הבדיקות על סייע זה',state.data.checks.filter(c=>c.assistant===name));
+}
 
-  return `<div class="panel">
-    <h3>בדיקות אחרונות <span class="note">40 האחרונות</span></h3>
+/* ══════ פעילות מפקחים ══════ */
+function buildDays(C){
+  const t=x=>{ if(!x) return null; const d=new Date(x); return isNaN(d)?null:d.getTime(); };
+  const byDay={};
+  C.forEach(c=>{
+    const k=c.inspector+'|'+c.date;
+    (byDay[k]=byDay[k]||{inspector:c.inspector,date:c.date,checks:[]}).checks.push(c);
+  });
+  return Object.values(byDay).map(d=>{
+    const ch=d.checks.slice().sort((a,b)=>(t(a.arrival_time)||0)-(t(b.arrival_time)||0));
+    const first=t(ch[0].dispatch_time)||t(ch[0].arrival_time);
+    const last =t(ch[ch.length-1].close_time)||t(ch[ch.length-1].arrival_time);
+    const visits=[]; let cur=null;
+    ch.forEach(c=>{
+      if(!cur||cur.institution!==c.institution){
+        cur={institution:c.institution,dispatch:t(c.dispatch_time),arrive:t(c.arrival_time),
+             end:t(c.close_time),n:1,flags:c.verdict==='flag'?1:0,checks:[c]};
+        visits.push(cur);
+      } else {
+        cur.end=t(c.close_time)||cur.end; cur.n++; cur.checks.push(c);
+        if(c.verdict==='flag') cur.flags++;
+      }
+    });
+    let onSite=0, travel=0;
+    visits.forEach((v,i)=>{
+      if(v.arrive&&v.end) onSite+=(v.end-v.arrive)/1000;
+      if(i>0&&visits[i-1].end&&v.arrive) travel+=Math.max(0,(v.arrive-visits[i-1].end)/1000);
+    });
+    const span=(first&&last&&last>first)?(last-first)/1000:null;
+    return {...d,checks:ch,visits,span,onSite,travel,
+            gap: span!=null ? Math.max(0,span-onSite-travel) : null};
+  }).sort((a,b)=>b.date.localeCompare(a.date));
+}
+
+function renderTime(){
+  const C=state.data.checks.filter(c=>c.arrival_time&&c.close_time);
+  if(!C.length){
+    $('#content').innerHTML='<div class="panel"><div class="empty"><div class="ic">◷</div>'+
+      '<div style="font-weight:600;color:var(--navy);font-size:17px">אין נתוני זמנים בטווח</div>'+
+      '<div style="margin-top:8px">נדרשות בדיקות עם חותמות הגעה וסגירה</div></div></div>';
+    return;
+  }
+  const days=buildDays(C);
+  W.days=days;
+  const sum=(a,f)=>a.reduce((s,x)=>s+(f(x)||0),0);
+  const avgSpan=sum(days,d=>d.span)/days.length;
+  const avgSite=sum(days,d=>d.onSite)/days.length;
+  const avgTrav=sum(days,d=>d.travel)/days.length;
+  const avgGap =sum(days,d=>d.gap)/days.length;
+
+  const byInsp=group(days,'inspector');
+  const rows=Object.keys(byInsp).map(k=>{
+    const a=byInsp[k];
+    const span=sum(a,d=>d.span), site=sum(a,d=>d.onSite),
+          trav=sum(a,d=>d.travel), gap=sum(a,d=>d.gap);
+    const visits=sum(a,d=>d.visits.length), checks=sum(a,d=>d.checks.length);
+    const hops=Math.max(visits-a.length,0);
+    return {name:k,days:a.length,span,site,trav,gap,visits,checks,
+      avgSpan:span/a.length, avgVisit:visits?site/visits:0, avgHop:hops?trav/hops:null,
+      util:span?Math.round(site/span*100):0};
+  }).sort((a,b)=>b.days-a.days);
+
+  $('#content').innerHTML = `<div class="kpi-row">
+    <div class="kpi"><div class="num">${days.length}</div><div class="label">ימי עבודה</div>
+      <div class="sub">${Object.keys(byInsp).length} מפקחים</div></div>
+    <div class="kpi"><div class="num">${fmtHM(avgSpan)}</div><div class="label">אורך יום ממוצע</div>
+      <div class="sub">מהשיגור הראשון לדיווח האחרון</div></div>
+    <div class="kpi ok"><div class="num">${fmtHM(avgSite)}</div><div class="label">זמן במוסדות</div>
+      <div class="sub">${pct(avgSite,avgSpan)}% מהיום</div></div>
+    <div class="kpi warn"><div class="num">${fmtHM(avgTrav)}</div><div class="label">נסיעה בין מוסדות</div>
+      <div class="sub">${pct(avgTrav,avgSpan)}% מהיום</div></div>
+    <div class="kpi ${avgGap>avgSpan*0.35?'bad':''}"><div class="num">${fmtHM(avgGap)}</div>
+      <div class="label">זמן בלתי מוסבר</div>
+      <div class="sub">${pct(avgGap,avgSpan)}% — הפסקות וזמן מת</div></div>
+  </div>
+  <div class="panel"><h3>סיכום לפי מפקח
+      <span class="note">ניצול = זמן במוסדות חלקי אורך היום · לחץ לפירוט יומי</span></h3>
     <div class="body" style="overflow-x:auto"><table><thead><tr>
-      <th>תאריך</th><th>מפקח</th><th>מוסד</th><th>סייע</th><th>סוג</th>
-      <th>מצב</th><th>פעילות</th><th>אימות</th><th>תוצאה</th>
-    </tr></thead><tbody>${rows.map(c=>`<tr>
-      <td style="white-space:nowrap">${esc(c.date)}</td>
-      <td style="white-space:nowrap">${esc(c.inspector)}</td>
-      <td>${esc(c.institution)}</td>
-      <td style="white-space:nowrap">${esc(c.assistant)}</td>
-      <td style="white-space:nowrap">${esc(c.atype)}</td>
-      <td style="white-space:nowrap">${esc(PRES_LABEL[c.presence]||c.presence)}</td>
-      <td>${esc(ACT_LABEL[c.activity]||'—')}</td>
-      <td style="white-space:nowrap">${esc(c.verified_name||'—')}</td>
-      <td>${vp(c.verdict)}</td>
-    </tr>`).join('')}</tbody></table></div></div>`;
+      <th>מפקח</th><th>ימים</th><th>ביקורים</th><th>בדיקות</th><th>אורך יום</th>
+      <th>שהייה במוסד</th><th>נסיעה בין מוסדות</th><th>לא מוסבר ליום</th><th>ניצול</th>
+    </tr></thead><tbody>${rows.map(r=>`<tr class="clickable" onclick="drillInspDays('${esc(r.name).replace(/'/g,'&#39;')}')">
+      <td>${esc(r.name)}</td><td class="num-cell">${r.days}</td>
+      <td class="num-cell">${r.visits}</td><td class="num-cell">${r.checks}</td>
+      <td class="num-cell">${fmtHM(r.avgSpan)}</td>
+      <td class="num-cell">${fmtHM(r.avgVisit)}</td>
+      <td class="num-cell">${fmtHM(r.avgHop)}</td>
+      <td class="num-cell">${fmtHM(r.gap/r.days)}</td>
+      <td class="num-cell" style="color:${r.util<40?'var(--danger)':r.util>70?'var(--success)':'inherit'}">${r.util}%</td>
+    </tr>`).join('')}</tbody></table></div></div>`
+  + daysPanel(days.slice(0,50));
 }
 
-/* ── אתחול ── */
+function dayRow(d,i,fn){
+  return `<tr class="clickable" onclick="${fn}(${i})">
+    <td style="white-space:nowrap">${esc(d.date)}</td>
+    <td style="white-space:nowrap">${esc(d.inspector)}</td>
+    <td class="num-cell">${clock(d.checks[0].dispatch_time||d.checks[0].arrival_time)}</td>
+    <td class="num-cell">${clock(d.checks[d.checks.length-1].close_time)}</td>
+    <td class="num-cell">${fmtHM(d.span)}</td>
+    <td class="num-cell">${d.visits.length}</td><td class="num-cell">${d.checks.length}</td>
+    <td class="num-cell">${fmtHM(d.onSite)}</td><td class="num-cell">${fmtHM(d.travel)}</td>
+    <td class="num-cell" style="color:${d.gap>d.span*0.35?'var(--danger)':'inherit'}">${fmtHM(d.gap)}</td>
+  </tr>`;
+}
+const DAY_HEAD=`<tr><th>תאריך</th><th>מפקח</th><th>התחלה</th><th>סיום</th><th>אורך</th>
+  <th>מוסדות</th><th>בדיקות</th><th>במוסדות</th><th>נסיעה</th><th>לא מוסבר</th></tr>`;
+
+function daysPanel(days){
+  return `<div class="panel"><h3>ימי עבודה אחרונים <span class="note">לחץ על יום לציר הזמן המלא</span></h3>
+    <div class="body" style="overflow-x:auto;max-height:520px"><table><thead>${DAY_HEAD}</thead>
+    <tbody>${days.map((d,i)=>dayRow(d,i,'drillDay')).join('')}</tbody></table></div></div>`;
+}
+
+function drillInspDays(name){
+  const days=(W.days||[]).filter(d=>d.inspector===name);
+  W.daysF=days;
+  const sum=(f)=>days.reduce((s,d)=>s+(f(d)||0),0);
+  openModal(name,'פירוט ימי עבודה',[
+    {n:days.length,l:'ימים'},
+    {n:sum(d=>d.visits.length),l:'ביקורים'},
+    {n:sum(d=>d.checks.length),l:'בדיקות'},
+    {n:fmtHM(sum(d=>d.onSite)),l:'סה״כ במוסדות'},
+    {n:fmtHM(sum(d=>d.travel)),l:'סה״כ נסיעה'},
+    {n:fmtHM(sum(d=>d.gap)),l:'סה״כ לא מוסבר'}
+  ], `<table><thead>${DAY_HEAD}</thead><tbody>${days.map((d,i)=>dayRow(d,i,'drillDayF')).join('')}</tbody></table>`);
+}
+function drillDay(i){ timeline((W.days||[])[i]); }
+function drillDayF(i){ timeline((W.daysF||[])[i]); }
+
+function timeline(d){
+  if(!d) return;
+  let html='<table><thead><tr><th>שעה</th><th>אירוע</th><th>מוסד</th><th>פירוט</th><th>משך</th></tr></thead><tbody>';
+  d.visits.forEach((v,i)=>{
+    if(i>0){
+      const p=d.visits[i-1];
+      const tr=(p.end&&v.arrive)?Math.max(0,(v.arrive-p.end)/1000):null;
+      html+=`<tr style="background:var(--gold-light)">
+        <td class="num-cell">${clock(new Date(p.end))}</td><td>נסיעה</td>
+        <td colspan="2" style="color:var(--gold-dark)">${esc(p.institution)} ← ${esc(v.institution)}</td>
+        <td class="num-cell">${fmtHM(tr)}</td></tr>`;
+    }
+    html+=`<tr><td class="num-cell">${clock(new Date(v.arrive))}</td>
+      <td><strong>הגעה</strong></td><td>${esc(v.institution)}</td>
+      <td>${v.n} בדיקות${v.flags?' · <span class="pill p-flag">'+v.flags+' חריגות</span>':''}</td>
+      <td class="num-cell">${fmtHM((v.end-v.arrive)/1000)}</td></tr>`;
+    v.checks.forEach(c=>{
+      html+=`<tr style="font-size:13px;color:var(--text-muted)">
+        <td class="num-cell">${clock(c.close_time)}</td><td>דיווח</td><td></td>
+        <td>${esc(c.assistant)} · ${esc(PRES_LABEL[c.presence]||'')} · ${esc(ACT_LABEL[c.activity]||'—')}</td>
+        <td class="num-cell">${fmtDur(c.t_report)}</td></tr>`;
+    });
+  });
+  html+='</tbody></table>';
+  openModal(d.inspector+' · '+d.date,'ציר זמן מלא',[
+    {n:fmtHM(d.span),l:'אורך יום'},{n:d.visits.length,l:'מוסדות'},
+    {n:d.checks.length,l:'בדיקות'},{n:fmtHM(d.onSite),l:'במוסדות'},
+    {n:fmtHM(d.travel),l:'נסיעה'},{n:fmtHM(d.gap),l:'לא מוסבר'}
+  ],html);
+}
+
+/* ══════ מפה ══════ */
+function renderMap(){
+  const C=state.data.checks.filter(c=>c.lat&&c.lng);
+  const far=C.filter(c=>c.distance>60).length;
+  $('#content').innerHTML=`<div class="panel"><h3>נעיצות הגעה
+      <span class="note">כל נקודה היא המקום שבו נלחץ ״הגעתי״ · ${far} נעיצות מעל 60 מ׳ מהיעד</span></h3>
+    <div style="padding:12px"><div id="map"></div>
+      <div class="legend">
+        <span><i style="background:#16a34a"></i>תקין</span>
+        <span><i style="background:#c6a636"></i>לבדיקה חוזרת</span>
+        <span><i style="background:#dc2626"></i>חריגה</span>
+        <span><i style="background:#152350"></i>מוסד לפי הגיליון</span>
+        <span style="margin-right:auto">${C.length} נעיצות</span>
+      </div></div></div>`;
+  setTimeout(()=>drawMap(C),80);
+}
+
+function drawMap(C){
+  if(typeof L==='undefined'){
+    $('#map').innerHTML='<div class="empty">ספריית המפה לא נטענה. נדרש חיבור לאינטרנט.</div>';
+    return;
+  }
+  const I=state.data.institutions.filter(i=>i.lat&&i.lng);
+  const map=L.map('map').setView(I.length?[I[0].lat,I[0].lng]:[32.084,34.833],14);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    {maxZoom:19,attribution:'© OpenStreetMap'}).addTo(map);
+
+  I.forEach(i=>L.circleMarker([i.lat,i.lng],{radius:8,color:'#152350',weight:2,
+      fillColor:'#152350',fillOpacity:.2})
+    .bindPopup('<b>'+esc(i.name)+'</b><br>מיקום לפי גיליון המוסדות').addTo(map));
+
+  const col={ok:'#16a34a',review:'#c6a636',flag:'#dc2626'};
+  const pts=[];
+  C.forEach(c=>{
+    pts.push([c.lat,c.lng]);
+    L.circleMarker([c.lat,c.lng],{radius:5,color:col[c.verdict]||'#6b7280',weight:1.5,
+      fillColor:col[c.verdict]||'#6b7280',fillOpacity:.85})
+     .bindPopup(`<b>${esc(c.assistant)}</b><br>${esc(c.institution)}<br>
+        ${esc(c.date)} · ${esc(c.inspector)}<br>
+        ${esc(PRES_LABEL[c.presence]||'')} · ${esc(ACT_LABEL[c.activity]||'—')}<br>
+        מרחק מהיעד: ${c.distance} מ׳`).addTo(map);
+  });
+  if(pts.length) map.fitBounds(L.latLngBounds(pts).pad(0.15));
+}
+
+/* ═══ אתחול ═══ */
 (function(){
-  // האימות כבוי בשלב זה. כשיודלק AUTH_REQUIRED — יוחזר מסך ההתחברות.
-  state.name = 'הנהלה';
-  enter();
+  try{
+    const sv=JSON.parse(sessionStorage.getItem('bakaraDash')||'null');
+    if(sv&&sv.t){ state.token=sv.t; state.name=sv.n; enter(); }
+  }catch(e){}
 })();
 </script>
 </body>

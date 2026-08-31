@@ -350,7 +350,7 @@ textarea.form-input { min-height: 84px; resize: vertical; line-height: 1.5; }
       <div id="login-err" style="display:none;margin-top:12px;padding:10px 12px;border-radius:8px;
            background:var(--danger-light);color:#7f1d1d;font-size:14px;font-weight:500"></div>
       <button class="btn-primary" id="btn-login" onclick="doLogin()">כניסה</button>
-      <div class="login-footer">גרסה 0.9 · מצב הדגמה</div>
+      <div class="login-footer">גרסה 2.0</div>
     </div>
   </div>
 </section>
@@ -500,7 +500,8 @@ textarea.form-input { min-height: 84px; resize: vertical; line-height: 1.5; }
 const CONFIG = {
   API_URL: 'https://script.google.com/macros/s/AKfycby_m54KMPtMeNNlikGUYpCPTRRgWMDQy-3EfsVF0CkwIvmlIk1PaQljq1lJwDmYYk3J/exec',
   DEMO_MODE: false,
-  VERSION: '0.9',
+  ACCESS_KEY: 'bb2026-K7fQm3xR9wLpZ4nT',               // ← העתק מגיליון ההגדרות
+  VERSION: '2.0',
   CACHE_PREFIX: 'sayaControl_v1_',
   GEOFENCE_METERS: 75,          // רדיוס אישור הגעה
   GPS_MIN_ACCURACY: 30,         // דיוק גרוע מזה = חסימה
@@ -681,11 +682,7 @@ async function apiPost(payload) {
 /* ── שיגור יעד ─────────────────────────────────────────── */
 async function getAssignment() {
   if (!CONFIG.DEMO_MODE) {
-    const here = await currentPosition_();
-    const r = await apiGet('assign', {
-      inspector: state.inspector.id,
-      lat: here ? here.lat : '', lng: here ? here.lng : ''
-    });
+    const r = await apiGet('assign', { inspector: state.inspector.id });
     if (!r.ok) throw new Error(r.error);
     return r.data;
   }
@@ -710,9 +707,10 @@ async function revealSubject(instId) {
       assignment_id: state.assignment.institution.assignment_id,
       lat:           state.arrival.lat,
       lng:           state.arrival.lng,
-      accuracy:      state.arrival.accuracy
+      accuracy:      state.arrival.accuracy,
+      test:          CONFIG.TEST_MODE ? 'true' : 'false'
     });
-    if (!r.ok) throw new Error(r.error);   // השרת דוחה אם המרחק גדול מדי
+    if (!r.ok) throw new Error(r.error);
     return r.data;
   }
   const done = state.checkedToday.map(c => c.aid);
@@ -945,6 +943,7 @@ async function confirmArrival() {
       return;
     }
     state.subject = subj;
+    state.remaining = subj.remaining || 0;
     state.revealTime = Date.now();
     state.answers = {};
     renderCheck();
@@ -987,6 +986,7 @@ function renderCheck() {
   $('#sc-hours').textContent   = s.hours;
   $('#sc-clock').textContent   = s.clockIn;
 
+  state.needsStudent = (s.needsStudent !== false) && s.type !== 'כיתתי';
   renderOpts('#q1-opts', PRESENCE, 'presence');
   renderOpts('#q2-opts', ACTIVITIES.map(a => ({ ...a, tag: tagFor(a.id) })), 'activity');
   renderOpts('#q3-opts', STUDENT, 'student');
@@ -1040,7 +1040,7 @@ function onPresence(id, btn) {
   $('#q2').classList.toggle('hidden', id !== 'found');
   if (id !== 'found') { state.answers.activity = null; $$('[data-group="activity"]').forEach(b => b.classList.remove('selected','is-flag')); }
 
-  $('#q3').classList.remove('hidden');
+  $('#q3').classList.toggle('hidden', !state.needsStudent);
   $('#q4').classList.remove('hidden');
   $('#q5').classList.remove('hidden');
 
@@ -1103,7 +1103,9 @@ function onStudent(id, btn) {
 
 function validate() {
   const a = state.answers;
-  let ok = !!a.presence && !!a.student && !!a.verify;
+  let ok = !!a.presence && !!a.verify && (!state.needsStudent || !!a.student);
+  // סתירה חוסמת שמירה, לא רק מעמעמת כפתורים
+  if (CONTACT_ACTIVITIES.indexOf(a.activity) > -1 && NO_STUDENT_STATES.indexOf(a.student) > -1) ok = false;
   if (a.presence === 'found' && !a.activity) ok = false;
   // "לא נמצא" מחייב אימות מול אדם, לא תצפית
   if (a.presence === 'not_found' && (a.verify === 'direct' || !$('#q4-text').value.trim())) ok = false;
@@ -1139,16 +1141,17 @@ const VERDICT_LABEL = { ok:'תקין', review:'לבדיקה חוזרת', flag:'�
 async function saveCheck() {
   const btn = $('#btn-save');
   btn.disabled = true; btn.textContent = 'שומר…';
-  const verdict = computeVerdict();
-  await queueRecord({ type: 'check', verdict });
+  const verdict = computeVerdict();          // תצוגה מקדימה בלבד — השרת מחשב מחדש
+  const res = await queueRecord({ type: 'check', verdict });
+  const finalVerdict = (res && res.verdict) || verdict;
   const s = state.subject;
   state.checkedToday.push({
-    aid: s.aid, name: s.name, verdict,
+    aid: s.aid, name: s.name, verdict: finalVerdict,
     secondsReveal: Math.round((Date.now() - state.revealTime) / 1000)
   });
   stopTimers();
   updateStats();
-  showNext(s, verdict);
+  showNext(s, finalVerdict);
   btn.disabled = false; btn.textContent = 'שמור דיווח';
 }
 
@@ -1190,7 +1193,7 @@ async function queueRecord(meta) {
     verified_name:      $('#q4-text')?.value.trim() || '',
     notes:              $('#q5-text')?.value.trim() || '',
     verdict:            meta.verdict,
-    close_time:         nowISO(),
+    close_time:         nowISO(),   // מכשיר — השרת דורס
     seconds_dispatch_to_arrival: state.arrival ? Math.round((state.arrival.time - state.assignment.dispatchTime) / 1000) : '',
     seconds_reveal_to_report:    state.revealTime ? Math.round((Date.now() - state.revealTime) / 1000) : '',
     app_version:        CONFIG.VERSION
@@ -1199,19 +1202,38 @@ async function queueRecord(meta) {
     await dbAdd({ local_id, created_at: nowISO(), payload });
     state.queue = await dbAll();
     updateSyncPill();
-    if (state.online && !CONFIG.DEMO_MODE) flushQueue();
+    if (state.online && !CONFIG.DEMO_MODE) {
+      const r = await flushQueue();
+      if (r && r.verdict) return r;
+    }
   } catch (e) { console.error(e); toast('שגיאת שמירה מקומית', 'error'); }
+  return null;
 }
 
+let _flushing = false;
 async function flushQueue() {
-  if (CONFIG.DEMO_MODE || !state.online) return;
-  const items = await dbAll();
-  for (const it of items) {
-    try { await apiPost({ action: 'save', ...it.payload }); await dbDel(it.local_id); }
-    catch (e) { break; }
-  }
-  state.queue = await dbAll();
-  updateSyncPill();
+  if (CONFIG.DEMO_MODE || !state.online || _flushing) return null;
+  _flushing = true;
+  let last = null;
+  try {
+    const items = await dbAll();
+    for (const it of items) {
+      try {
+        const r = await apiPost({ action: 'save', ...it.payload });
+        if (!r.ok) {
+          // דחייה עניינית של השרת — לא לנסות שוב לנצח
+          toast('השרת דחה דיווח: ' + r.error, 'error');
+          await dbDel(it.local_id);
+          continue;
+        }
+        last = r.data;
+        await dbDel(it.local_id);
+      } catch (e) { break; }
+    }
+    state.queue = await dbAll();
+    updateSyncPill();
+  } finally { _flushing = false; }
+  return last;
 }
 
 function updateSyncPill() {
@@ -1231,7 +1253,9 @@ function showNext(subject, verdict) {
 
   const instId = state.assignment.institution.id;
   const done = state.checkedToday.map(c => c.aid);
-  const remaining = DEMO.roster.filter(r => r.inst === instId && !done.includes(r.aid)).length;
+  const remaining = CONFIG.DEMO_MODE
+    ? DEMO.roster.filter(r => r.inst === instId && !done.includes(r.aid)).length
+    : (state.remaining || 0);
 
   const opts = [];
   if (remaining > 0) opts.push({
