@@ -350,6 +350,8 @@ textarea.form-input { min-height: 84px; resize: vertical; line-height: 1.5; }
       <div class="login-subtitle">עיריית בני ברק · <span style="color:#b45309;font-weight:600">סביבת בדיקה</span></div>
       <label class="field-label" for="sel-inspector">שם המפקח</label>
       <select class="form-select" id="sel-inspector"><option value="">בחר מהרשימה...</option></select>
+      <div id="login-err" style="display:none;margin-top:12px;padding:10px 12px;border-radius:8px;
+           background:var(--danger-light);color:#7f1d1d;font-size:14px;font-weight:500"></div>
       <button class="btn-primary" id="btn-login" onclick="doLogin()">כניסה</button>
       <div class="login-footer">גרסה 0.9 · סביבת בדיקה — אין צורך להיות במקום</div>
     </div>
@@ -657,7 +659,7 @@ function dbDel(id) {
    יכול לקרוא את היעד ואת שם הסייע לפני שהגיע.
    ═══════════════════════════════════════════════════════════ */
 async function apiGet(action, params = {}) {
-  const qs = new URLSearchParams({ action, ...params }).toString();
+  const qs = new URLSearchParams({ action, token: state.token || '', inspector: (state.inspector && state.inspector.id) || '', ...params }).toString();
   const res = await fetch(`${CONFIG.API_URL}?${qs}`);
   if (!res.ok) throw new Error('HTTP ' + res.status);
   return res.json();
@@ -752,6 +754,7 @@ function haversine(lat1, lng1, lat2, lng2) {
 /* ═══════════════════════════════════════════════════════════
    LOGIN
    ═══════════════════════════════════════════════════════════ */
+
 async function populateInspectors() {
   const sel = $('#sel-inspector');
   let list = DEMO.inspectors;
@@ -773,7 +776,9 @@ async function populateInspectors() {
 
 function doLogin() {
   const id = $('#sel-inspector').value;
-  if (!id) { toast('בחר שם מהרשימה', 'error'); return; }
+  const err = $('#login-err');
+  if (!id) { err.textContent = 'בחר שם מהרשימה'; err.style.display = 'block'; return; }
+  err.style.display = 'none';
   state.inspector = DEMO.inspectors.find(i => i.id === id);
   localStorage.setItem(STORAGE.INSPECTOR, id);
   $('#btn-logout').style.display = '';
@@ -1247,8 +1252,8 @@ window.addEventListener('offline', () => { state.online = false; updateSyncPill(
 
 (async function boot() {
   try { await openDB(); state.queue = await dbAll(); } catch (e) { console.error(e); }
-  await populateInspectors();
   updateSyncPill();
+  await populateInspectors();
   if (!CONFIG.DEMO_MODE) setInterval(flushQueue, CONFIG.SYNC_INTERVAL_MS);
 })();
 </script>
