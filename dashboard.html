@@ -52,6 +52,14 @@ input,select{font-family:inherit;font-size:inherit}
 .err{display:none;margin-top:12px;padding:10px 12px;border-radius:var(--radius-sm);
   background:var(--danger-light);color:#7f1d1d;font-size:14px;font-weight:500}
 
+.tabs{display:flex;gap:4px;border-bottom:2px solid var(--border);margin-bottom:18px}
+.tab{background:none;padding:11px 22px;font-size:15px;font-weight:600;color:var(--text-muted);
+  border-bottom:3px solid transparent;margin-bottom:-2px}
+.tab.active{color:var(--navy);border-bottom-color:var(--teal)}
+.switch{display:flex;align-items:center;gap:7px;font-size:13.5px;color:var(--text-muted);cursor:pointer}
+.switch input{width:16px;height:16px;accent-color:var(--teal);cursor:pointer}
+.split{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:16px}
+@media(max-width:960px){.split{grid-template-columns:1fr}}
 .toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:18px}
 .chip{padding:8px 16px;border-radius:999px;background:var(--surface);border:1.5px solid var(--border);
   font-size:14px;font-weight:500;color:var(--text-muted);white-space:nowrap;transition:all .15s}
@@ -134,12 +142,20 @@ tbody tr:hover{background:#fafbfc}
 
 <section class="screen" id="screen-main">
   <div class="container">
+    <div class="tabs">
+      <button class="tab active" data-t="base" onclick="setTab('base')">מצב קיים</button>
+      <button class="tab" data-t="results" onclick="setTab('results')">תוצאות בקרה</button>
+    </div>
     <div class="toolbar">
-      <button class="chip" data-d="7"  onclick="setRange(7)">7 ימים</button>
-      <button class="chip active" data-d="30" onclick="setRange(30)">30 יום</button>
-      <button class="chip" data-d="90" onclick="setRange(90)">רבעון</button>
-      <button class="chip" data-d="365" onclick="setRange(365)">שנה</button>
+      <div id="range-chips" style="display:flex;gap:10px">
+        <button class="chip" data-d="7"  onclick="setRange(7)">7 ימים</button>
+        <button class="chip active" data-d="30" onclick="setRange(30)">30 יום</button>
+        <button class="chip" data-d="90" onclick="setRange(90)">רבעון</button>
+        <button class="chip" data-d="365" onclick="setRange(365)">שנה</button>
+      </div>
       <div class="spacer"></div>
+      <label class="switch"><input type="checkbox" id="inc-test" onchange="load()">
+        <span>הצג גם רשומות בדיקה</span></label>
       <button class="chip" onclick="load()">רענן</button>
     </div>
 
@@ -154,7 +170,7 @@ const CONFIG = {
   API_URL: 'https://script.google.com/macros/s/AKfycby_m54KMPtMeNNlikGUYpCPTRRgWMDQy-3EfsVF0CkwIvmlIk1PaQljq1lJwDmYYk3J/exec'
 };
 
-const state = { token:null, name:null, days:30, data:null };
+const state = { token:null, name:null, days:30, tab:'base', data:null };
 
 const $  = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -202,6 +218,7 @@ async function doLogin(){
 
 function enter(){
   $('#who').textContent = state.name;
+  $('#range-chips').style.visibility='hidden';
   $('#btn-logout').style.display='';
   $('#screen-login').classList.remove('active');
   $('#screen-main').classList.add('active');
@@ -220,11 +237,18 @@ function setRange(d){
   load();
 }
 
+function setTab(t){
+  state.tab = t;
+  document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active', x.dataset.t===t));
+  $('#range-chips').style.visibility = (t==='results') ? 'visible' : 'hidden';
+  if(state.data) render();
+}
+
 /* ── טעינה ── */
 async function load(){
   $('#content').innerHTML = '<div class="loading">טוען נתונים…</div>';
   try{
-    const r = await apiGet('dashboard', {days:state.days});
+    const r = await apiGet('dashboard', {days:state.days, test:$('#inc-test').checked?'true':'false'});
     if(!r.ok) throw new Error(r.error);
     state.data = r.data;
     render();
@@ -235,13 +259,97 @@ async function load(){
 
 /* ── תצוגה ── */
 function render(){
-  const C = state.data.checks, T = state.data.totals;
+  if(state.tab==='base') return renderBase();
+  return renderResults();
+}
+
+/* ═══════ מסך א׳: מצב קיים ═══════ */
+function renderBase(){
+  const I = state.data.institutions.filter(i=>i.active);
+  const R = state.data.roster;
+  const T = state.data.totals;
+
+  const boys  = I.filter(i=>i.kind==='M').length;
+  const girls = I.filter(i=>i.kind==='F').length;
+  const noGeo = I.filter(i=>!i.geo).length;
+  const cost  = R.reduce((s,r)=>s+r.cost,0);
+  const bonus = R.filter(r=>r.bonus).length;
+
+  const kpis = `
+  <div class="kpi-row">
+    <div class="kpi"><div class="num">${I.length}</div><div class="label">מוסדות פעילים</div>
+      <div class="sub">${boys} בנים · ${girls} בנות וגנים</div></div>
+    <div class="kpi ok"><div class="num">${R.length}</div><div class="label">סייעים ברוסטר</div>
+      <div class="sub">${new Set(R.map(r=>r.aid)).size} אנשים שונים</div></div>
+    <div class="kpi"><div class="num">${new Set(R.filter(r=>r.student).map(r=>r.student)).size}</div>
+      <div class="label">תלמידים מזוכים</div><div class="sub">לפי שם תלמיד ברוסטר</div></div>
+    <div class="kpi warn"><div class="num">${bonus}</div><div class="label">מקבלי מענק התמדה</div>
+      <div class="sub">${pct(bonus,R.length)}% מהרוסטר · דגימה מוגברת</div></div>
+    <div class="kpi ${cost?'':'warn'}"><div class="num">${cost?(cost/1000).toFixed(0)+'K':'—'}</div>
+      <div class="label">עלות חודשית</div>
+      <div class="sub">${cost?'כ-'+Math.round(cost*12/1000000*10)/10+' מ׳ ש״ח בשנה':'מלא monthly_cost'}</div></div>
+  </div>`;
+
+  const warn = (noGeo || !T.attend_days) ? `
+  <div class="panel" style="border-color:#f0dd9e;background:var(--gold-light);margin-bottom:16px">
+    <div style="padding:14px 18px;font-size:14px;color:var(--gold-dark);font-weight:500">
+      ${noGeo ? '<div>· ' + noGeo + ' מוסדות ללא קואורדינטות — לא יישלח אליהם מפקח. הרץ geocodeInstitutions.</div>' : ''}
+      ${!T.attend_days ? '<div>· אין נתוני החתמה בלשונית נוכחות — ההצלבה מול דוח הנוכחות לא תפעל עדיין.</div>' : ''}
+    </div></div>` : '';
+
+  $('#content').innerHTML = kpis + warn
+    + '<div class="split">' + countPanel(R,'atype','סייעים לפי סוג','מטריצת ההתאמה נגזרת מכאן')
+    + countPanel(I,'type','מוסדות לפי סוג','')
+    + countPanel(R,'inst_type','סייעים לפי סוג מוסד','איפה מרוכז התקציב') + '</div>'
+    + instRosterPanel(I,R);
+}
+
+function countPanel(arr,key,title,note){
+  const g = group(arr,key);
+  const rows = Object.keys(g).map(k=>({k:k,n:g[k].length})).sort((a,b)=>b.n-a.n);
+  const tot = arr.length, max = Math.max(...rows.map(r=>r.n),1);
+  return `<div class="panel"><h3>${title}${note?' <span class="note">'+note+'</span>':''}</h3>
+    <div class="body"><table><tbody>${rows.map(r=>`<tr>
+      <td style="width:38%">${esc(r.k)}</td>
+      <td class="num-cell" style="width:40px">${r.n}</td>
+      <td class="num-cell" style="width:46px;color:var(--text-muted);font-size:12px">${pct(r.n,tot)}%</td>
+      <td><div class="bar"><span style="width:${r.n/max*100}%"></span></div></td>
+    </tr>`).join('')}</tbody></table></div></div>`;
+}
+
+function instRosterPanel(I,R){
+  const g = group(R,'institution');
+  const rows = I.map(i=>{
+    const a = g[i.name] || [];
+    const t = {};
+    a.forEach(x=>t[x.atype]=(t[x.atype]||0)+1);
+    return {name:i.name, kind:i.kind==='M'?'בנים':'בנות/גנים', type:i.type, n:a.length,
+            geo:i.geo, det:Object.keys(t).map(k=>k+' '+t[k]).join(' · ') || '—',
+            cost:a.reduce((s,x)=>s+x.cost,0)};
+  }).sort((a,b)=>b.n-a.n);
+
+  return `<div class="panel"><h3>מוסדות ופריסת סייעים
+      <span class="note">מוסד בלי סייעים לא ייכנס להגרלת השיגור</span></h3>
+    <div class="body" style="overflow-x:auto"><table><thead><tr>
+      <th>מוסד</th><th>מגזר</th><th>סוג</th><th>סייעים</th><th>פירוט</th><th>עלות חודשית</th><th>מיקום</th>
+    </tr></thead><tbody>${rows.map(r=>`<tr>
+      <td>${esc(r.name)}</td><td style="white-space:nowrap">${r.kind}</td><td style="white-space:nowrap">${esc(r.type)}</td>
+      <td class="num-cell" style="color:${r.n?'inherit':'var(--danger)'}">${r.n}</td>
+      <td style="font-size:13px;color:var(--text-muted)">${esc(r.det)}</td>
+      <td class="num-cell">${r.cost?r.cost.toLocaleString():'—'}</td>
+      <td>${r.geo?'<span class="pill p-ok">✓</span>':'<span class="pill p-flag">חסר</span>'}</td>
+    </tr>`).join('')}</tbody></table></div></div>`;
+}
+
+/* ═══════ מסך ב׳: תוצאות בקרה ═══════ */
+function renderResults(){
+  const C = state.data.checks, R = state.data.roster, I = state.data.institutions.filter(i=>i.active);
 
   if(!C.length){
     $('#content').innerHTML =
       '<div class="panel"><div class="empty"><div class="ic">◷</div>'+
       '<div style="font-weight:600;color:var(--navy);font-size:17px">אין בדיקות בטווח הנבחר</div>'+
-      '<div style="margin-top:6px">בחר טווח ארוך יותר, או המתן לבדיקות הראשונות</div></div></div>';
+      '<div style="margin-top:8px">אם ביצעת בדיקות דרך index-test — סמן למעלה «הצג גם רשומות בדיקה»</div></div></div>';
     return;
   }
 
@@ -249,25 +357,53 @@ function render(){
   const reviews = C.filter(c=>c.verdict==='review');
   const avgRep  = C.reduce((s,c)=>s+c.t_report,0)/C.length;
   const covered = new Set(C.map(c=>c.assistant)).size;
+  const instCov = new Set(C.map(c=>c.institution)).size;
+  const tests   = C.filter(c=>c.is_test).length;
 
   const kpis = `
   <div class="kpi-row">
     <div class="kpi"><div class="num">${C.length}</div><div class="label">בדיקות שבוצעו</div>
-      <div class="sub">${state.days} הימים האחרונים</div></div>
+      <div class="sub">${tests?tests+' מתוכן בדיקת מערכת':state.days+' הימים האחרונים'}</div></div>
     <div class="kpi bad"><div class="num">${flags.length}</div><div class="label">חריגות</div>
       <div class="sub">${pct(flags.length,C.length)}% מהבדיקות</div></div>
     <div class="kpi warn"><div class="num">${reviews.length}</div><div class="label">לבדיקה חוזרת</div>
       <div class="sub">${pct(reviews.length,C.length)}% מהבדיקות</div></div>
-    <div class="kpi ok"><div class="num">${covered}</div><div class="label">סייעים שנבדקו</div>
-      <div class="sub">מתוך ${T.roster_size} ברוסטר · ${pct(covered,T.roster_size)}%</div></div>
+    <div class="kpi ok"><div class="num">${covered}/${R.length}</div><div class="label">כיסוי סייעים</div>
+      <div class="sub">${instCov} מתוך ${I.length} מוסדות נבדקו</div></div>
     <div class="kpi"><div class="num">${fmtDur(avgRep)}</div><div class="label">זמן חשיפה→דיווח</div>
       <div class="sub">ממוצע, דקות</div></div>
   </div>`;
 
   $('#content').innerHTML = kpis
-    + '<div class="grid2">' + inspectorPanel(C) + institutionPanel(C) + '</div>'
+    + '<div class="grid2">' + inspectorPanel(C) + institutionResultPanel(C,I) + '</div>'
     + '<div class="grid2">' + activityPanel(C) + typePanel(C) + '</div>'
     + recentPanel(C);
+}
+
+function institutionResultPanel(C,I){
+  const g = group(C,'institution');
+  const checked = Object.keys(g).map(k=>{
+    const a=g[k], f=a.filter(c=>c.verdict==='flag').length;
+    return {name:k, n:a.length, f:f, rate:pct(f,a.length),
+            status: f===0?'עבר':(f/a.length>0.25?'נכשל':'ממצאים')};
+  }).sort((x,y)=>y.rate-x.rate || y.n-x.n);
+
+  const never = I.filter(i=>!g[i.name]).length;
+  const sp = s => s==='עבר' ? '<span class="pill p-ok">עבר</span>'
+                : s==='נכשל' ? '<span class="pill p-flag">נכשל</span>'
+                : '<span class="pill p-review">ממצאים</span>';
+
+  return `<div class="panel">
+    <h3>מוסדות לפי תוצאה <span class="note">${never} מוסדות טרם נבדקו כלל</span></h3>
+    <div class="body" style="max-height:420px;overflow-y:auto"><table><thead><tr>
+      <th>מוסד</th><th>בדיקות</th><th>חריגות</th><th style="width:100px">שיעור</th><th>סטטוס</th>
+    </tr></thead><tbody>${checked.map(r=>`<tr>
+      <td>${esc(r.name)}</td><td class="num-cell">${r.n}</td><td class="num-cell">${r.f}</td>
+      <td><div style="display:flex;align-items:center;gap:8px">
+        <div class="bar ${r.rate?'risk':''}"><span style="width:${r.rate}%"></span></div>
+        <span class="num-cell" style="font-size:12px">${r.rate}%</span></div></td>
+      <td>${sp(r.status)}</td>
+    </tr>`).join('')}</tbody></table></div></div>`;
 }
 
 function group(arr, key){
@@ -300,26 +436,6 @@ function inspectorPanel(C){
     </tr>`).join('')}</tbody></table></div></div>`;
 }
 
-function institutionPanel(C){
-  const g = group(C,'institution');
-  const rows = Object.keys(g).map(k=>{
-    const a = g[k], f = a.filter(c=>c.verdict==='flag').length;
-    return {name:k, n:a.length, f:f, rate:pct(f,a.length)};
-  }).sort((x,y)=>y.rate-x.rate || y.f-x.f).slice(0,10);
-
-  return `<div class="panel">
-    <h3>מוסדות לפי שיעור חריגות <span class="note">עשרת הראשונים</span></h3>
-    <div class="body"><table><thead><tr>
-      <th>מוסד</th><th>בדיקות</th><th>חריגות</th><th style="width:110px">שיעור</th>
-    </tr></thead><tbody>${rows.map(r=>`<tr>
-      <td>${esc(r.name)}</td>
-      <td class="num-cell">${r.n}</td>
-      <td class="num-cell">${r.f}</td>
-      <td><div style="display:flex;align-items:center;gap:8px">
-        <div class="bar ${r.rate>0?'risk':''}"><span style="width:${r.rate}%"></span></div>
-        <span class="num-cell" style="font-size:12px">${r.rate}%</span></div></td>
-    </tr>`).join('')}</tbody></table></div></div>`;
-}
 
 const ACT_LABEL = {
   with_student_class:'צמוד לתלמיד בכיתה', with_student_out:'צמוד מחוץ לכיתה',

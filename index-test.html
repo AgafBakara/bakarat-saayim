@@ -446,6 +446,10 @@ textarea.form-input { min-height: 84px; resize: vertical; line-height: 1.5; }
       <div class="q-title">3. מצב התלמיד המשויך</div>
       <div class="q-help strong">המידע חייב להגיע מיומן הכיתה או מהמחנכת. לא מהסייע.</div>
       <div class="opt-list" id="q3-opts"></div>
+      <div id="contradiction" style="display:none;margin-top:10px;padding:10px 12px;border-radius:8px;
+           background:var(--danger-light);color:#7f1d1d;font-size:13.5px;font-weight:500">
+        סתירה בין התשובות. סייע לא יכול להיות צמוד לתלמיד שאינו בבית הספר.
+      </div>
       <div class="sub-input hidden" id="q3-sub">
         <input class="form-input" id="q3-text" placeholder="שעת השחרור">
       </div>
@@ -453,11 +457,11 @@ textarea.form-input { min-height: 84px; resize: vertical; line-height: 1.5; }
 
     <!-- Q4 -->
     <div class="q-block hidden" id="q4">
-      <div class="q-title">4. אימות מול הצוות</div>
-      <div class="q-help" id="q4-help">מי מסר לך את המידע</div>
+      <div class="q-title">4. אימות נוכחות הסייע מול הצוות</div>
+      <div class="q-help" id="q4-help">מי אישר לך שהסייע נמצא או לא נמצא — לא מדובר בתלמיד</div>
       <div class="opt-list" id="q4-opts"></div>
       <div class="sub-input" id="q4-sub">
-        <input class="form-input" id="q4-text" placeholder="שם ותפקיד של מוסר המידע">
+        <input class="form-input" id="q4-text" placeholder="שם ותפקיד של מי שאישר לגבי הסייע">
       </div>
     </div>
 
@@ -560,6 +564,11 @@ const STUDENT = [
   { id: 'released',  label: 'שוחרר מוקדם', needsText: true, placeholder: 'שעת השחרור' },
   { id: 'unknown',   label: 'אינו רשום / לא ידוע לצוות', flag: true }
 ];
+
+// פעילויות שמשמעותן מגע ישיר עם התלמיד.
+// אם נבחרה אחת מהן, התלמיד לא יכול להיות נעדר.
+const CONTACT_ACTIVITIES = ['with_student_class', 'with_student_out', 'nearby_available'];
+const NO_STUDENT_STATES  = ['absent', 'unknown'];
 
 const VERIFY = [
   { id: 'teacher',   label: 'מחנכת הכיתה' },
@@ -1002,6 +1011,7 @@ function renderCheck() {
 
   ['q2','q3','q4','q5'].forEach(q => $('#' + q).classList.add('hidden'));
   ['q1-sub','q2-sub','q3-sub'].forEach(q => $('#' + q).classList.add('hidden'));
+  $$('.opt').forEach(b => { b.style.opacity = ''; b.style.pointerEvents = ''; b.title = ''; });
   ['q1-text','q2-text','q3-text','q4-text','q5-text'].forEach(t => $('#' + t).value = '');
   $('#btn-save').disabled = true;
 }
@@ -1053,8 +1063,8 @@ function onPresence(id, btn) {
 
   // אימות מחייב כשלא נמצא
   $('#q4-help').innerHTML = (id === 'not_found')
-    ? '<span style="color:var(--danger);font-weight:600">חובה. אי אפשר לרשום "לא נמצא" על סמך תצפית בלבד.</span>'
-    : 'מי מסר לך את המידע';
+    ? '<span style="color:var(--danger);font-weight:600">חובה. מי אישר שהסייע אינו במוסד? אי אפשר לרשום "לא נמצא" על סמך תצפית בלבד.</span>'
+    : 'מי אישר לך שהסייע נמצא או לא נמצא — לא מדובר בתלמיד';
 }
 
 function onActivity(id, btn) {
@@ -1062,6 +1072,42 @@ function onActivity(id, btn) {
   if (m[id] === 'flag') btn.classList.add('is-flag');
   const opt = ACTIVITIES.find(a => a.id === id);
   $('#q2-sub').classList.toggle('hidden', !opt.needsText);
+  syncContradictions();
+}
+
+/**
+ * מונע סתירה לוגית: אי אפשר לדווח שהסייע צמוד לתלמיד
+ * ובאותה נשימה שהתלמיד נעדר.
+ */
+function syncContradictions() {
+  const a = state.answers;
+  const contact = CONTACT_ACTIVITIES.indexOf(a.activity) > -1;
+  const noStudent = NO_STUDENT_STATES.indexOf(a.student) > -1;
+
+  // חסימת מצבי תלמיד כשנבחרה פעילות של מגע
+  NO_STUDENT_STATES.forEach(id => setOptDisabled('student', id, contact,
+    'לא ניתן — דיווחת שהסייע נמצא עם התלמיד'));
+
+  // וההפך: חסימת פעילויות מגע כשהתלמיד נעדר
+  CONTACT_ACTIVITIES.forEach(id => setOptDisabled('activity', id, noStudent,
+    'לא ניתן — דיווחת שהתלמיד אינו בבית הספר'));
+
+  const warn = $('#contradiction');
+  if (warn) warn.style.display = (contact && noStudent) ? 'block' : 'none';
+}
+
+function setOptDisabled(group, id, disabled, reason) {
+  const btn = $(`[data-group="${group}"][data-id="${id}"]`);
+  if (!btn) return;
+  if (disabled && !btn.classList.contains('selected')) {
+    btn.style.opacity = '.4';
+    btn.style.pointerEvents = 'none';
+    btn.title = reason;
+  } else {
+    btn.style.opacity = '';
+    btn.style.pointerEvents = '';
+    btn.title = '';
+  }
 }
 
 function onStudent(id, btn) {
@@ -1069,6 +1115,7 @@ function onStudent(id, btn) {
   if (opt.flag) btn.classList.add('is-flag');
   $('#q3-sub').classList.toggle('hidden', !opt.needsText);
   if (opt.needsText) $('#q3-text').placeholder = opt.placeholder;
+  syncContradictions();
 }
 
 function validate() {
