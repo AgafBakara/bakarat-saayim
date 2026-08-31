@@ -626,37 +626,54 @@ const state = {
    ═══════════════════════════════════════════════════════════ */
 const DB_NAME = 'sayaControlDB', DB_VERSION = 1, STORE = 'queue';
 let db = null;
+let memQueue = null;          // חלופה כש-IndexedDB חסום (file://, מצב פרטי)
 
 function openDB() {
-  return new Promise((res, rej) => {
-    const r = indexedDB.open(DB_NAME, DB_VERSION);
-    r.onupgradeneeded = e => {
-      const d = e.target.result;
-      if (!d.objectStoreNames.contains(STORE)) d.createObjectStore(STORE, { keyPath: 'local_id' });
-    };
-    r.onsuccess = e => { db = e.target.result; res(db); };
-    r.onerror = e => rej(e.target.error);
+  return new Promise(res => {
+    try {
+      if (typeof indexedDB === 'undefined' || !indexedDB) { memQueue = []; return res(null); }
+      const r = indexedDB.open(DB_NAME, DB_VERSION);
+      r.onupgradeneeded = e => {
+        const d = e.target.result;
+        if (!d.objectStoreNames.contains(STORE)) d.createObjectStore(STORE, { keyPath: 'local_id' });
+      };
+      r.onsuccess = e => { db = e.target.result; res(db); };
+      r.onerror = () => { memQueue = []; res(null); };   // נכשל — עוברים לזיכרון
+      r.onblocked = () => { memQueue = []; res(null); };
+      setTimeout(() => { if (!db && memQueue === null) { memQueue = []; res(null); } }, 3000);
+    } catch (e) { memQueue = []; res(null); }
   });
 }
+
+function useMem_() { return db === null; }
+
 function dbAdd(item) {
+  if (useMem_()) { (memQueue = memQueue || []).push(item); return Promise.resolve(); }
   return new Promise((res, rej) => {
-    const tx = db.transaction(STORE, 'readwrite');
-    tx.objectStore(STORE).add(item);
-    tx.oncomplete = res; tx.onerror = () => rej(tx.error);
+    try {
+      const tx = db.transaction(STORE, 'readwrite');
+      tx.objectStore(STORE).add(item);
+      tx.oncomplete = res; tx.onerror = () => rej(tx.error);
+    } catch (e) { (memQueue = memQueue || []).push(item); db = null; res(); }
   });
 }
 function dbAll() {
+  if (useMem_()) return Promise.resolve((memQueue || []).slice());
   return new Promise((res, rej) => {
-    const tx = db.transaction(STORE, 'readonly');
-    const q = tx.objectStore(STORE).getAll();
-    q.onsuccess = () => res(q.result || []); q.onerror = () => rej(q.error);
+    try {
+      const q = db.transaction(STORE, 'readonly').objectStore(STORE).getAll();
+      q.onsuccess = () => res(q.result || []); q.onerror = () => rej(q.error);
+    } catch (e) { res(memQueue || []); }
   });
 }
 function dbDel(id) {
+  if (useMem_()) { memQueue = (memQueue || []).filter(x => x.local_id !== id); return Promise.resolve(); }
   return new Promise((res, rej) => {
-    const tx = db.transaction(STORE, 'readwrite');
-    tx.objectStore(STORE).delete(id);
-    tx.oncomplete = res; tx.onerror = () => rej(tx.error);
+    try {
+      const tx = db.transaction(STORE, 'readwrite');
+      tx.objectStore(STORE).delete(id);
+      tx.oncomplete = res; tx.onerror = () => rej(tx.error);
+    } catch (e) { res(); }
   });
 }
 
@@ -1177,8 +1194,22 @@ const VERDICT_LABEL = { ok:'תקין', review:'לבדיקה חוזרת', flag:'�
 async function saveCheck() {
   const btn = $('#btn-save');
   btn.disabled = true; btn.textContent = 'שומר…';
-  const verdict = computeVerdict();          // תצוגה מקדימה בלבד — השרת מחשב מחדש
-  const res = await queueRecord({ type: 'check', verdict });
+
+  const verdict = computeVerdict();   // תצוגה מקדימה — השרת מחשב מחדש
+  let res;
+  try {
+    res = await queueRecord({ type: 'check', verdict });
+  } catch (e) {
+    res = { ok: false, error: e.message };
+  }
+
+  // כישלון חייב להיות גלוי. מפקח שחושב שדיווח ולא דיווח הוא התרחיש הגרוע.
+  if (res && res.ok === false) {
+    btn.disabled = false; btn.textContent = 'שמור דיווח';
+    toast('הדיווח לא נשמר: ' + (res.error || 'שגיאה'), 'error');
+    return;
+  }
+
   const finalVerdict = (res && res.verdict) || verdict;
   const s = state.subject;
   state.checkedToday.push({
@@ -1240,10 +1271,14 @@ async function queueRecord(meta) {
     updateSyncPill();
     if (state.online && !CONFIG.DEMO_MODE) {
       const r = await flushQueue();
-      if (r && r.verdict) return r;
+      if (r && r.error) return { ok: false, error: r.error };
+      if (r && r.verdict) return { ok: true, verdict: r.verdict };
     }
-  } catch (e) { console.error(e); toast('שגיאת שמירה מקומית', 'error'); }
-  return null;
+  } catch (e) {
+    console.error(e);
+    return { ok: false, error: 'שמירה מקומית נכשלה: ' + e.message };
+  }
+  return { ok: true };
 }
 
 let _flushing = false;
@@ -1258,8 +1293,8 @@ async function flushQueue() {
         const r = await apiPost({ action: 'save', ...it.payload });
         if (!r.ok) {
           // דחייה עניינית של השרת — לא לנסות שוב לנצח
-          toast('השרת דחה דיווח: ' + r.error, 'error');
           await dbDel(it.local_id);
+          last = { error: r.error };
           continue;
         }
         last = r.data;
