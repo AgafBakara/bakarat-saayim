@@ -1040,14 +1040,24 @@ async function boot(){
   try{
     const r=await apiGet('inspectors');
     if(r.ok && r.data && r.data.length){
+      // מפקחים אינם מורשים לדשבורד — רק מי שסומן admin בגיליון
+      const admins=r.data.filter(i=>i.role==='admin');
+      if(!admins.length){
+        $('#mode-pick').style.display='';
+        $('#sel-admin').innerHTML='<option value="">—</option>';
+        $('#err').innerHTML='לא הוגדר משתמש הנהלה.<br>'+
+          '<span style="font-weight:400">בגיליון ״מפקחים״, בעמודה role, כתוב admin בשורה שלך.</span>';
+        $('#err').style.display='block';
+        return;
+      }
       const sel=$('#sel-admin');
       sel.innerHTML='<option value="">בחר מהרשימה...</option>';
       ADMINS.length=0;
-      r.data.forEach(i=>{ ADMINS.push(i);
+      admins.forEach(i=>{ ADMINS.push(i);
         const o=document.createElement('option');
         o.value=i.id; o.textContent=i.name; sel.appendChild(o); });
       $('#mode-pick').style.display='';
-      $('#login-sub').innerHTML='עיריית בני ברק · <span style="color:var(--gold-dark);font-weight:600">אימות סיסמה כבוי</span>';
+      $('#login-sub').innerHTML='הנהלה בלבד · <span style="color:var(--gold-dark);font-weight:600">אימות סיסמה כבוי</span>';
       btn.disabled=false;
       return;
     }
