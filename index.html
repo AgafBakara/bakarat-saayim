@@ -970,7 +970,7 @@ async function doLoginPassword(err) {
     err.style.display = 'block';
     return;
   }
-  btn.disabled = true; btn.textContent = 'מתחבר…';
+  btn.disabled = true; btn.textContent = 'בודק סיסמה… (עד 5 שניות)';
   try {
     const r = await apiPost({ action: 'login', username: user, password: pass });
     // הודעת השרת אחידה ואינה מבדילה בין שם משתמש לסיסמה. לא מוסיפים אבחנה כאן.

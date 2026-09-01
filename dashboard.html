@@ -137,18 +137,28 @@ tr.clickable td:first-child::after{content:'‹';color:var(--text-muted);margin-
 }
   /* טבלת המשתמשים: רוחבים קבועים. בלעדיהם הדפדפן מחלק לפי תוכן,
      ועמודת הפעולות ותגית הסטטוס נדחסות. */
-  .users-table{table-layout:fixed;min-width:1020px}
-  .users-table th,.users-table td{vertical-align:middle;overflow:hidden}
-  .users-table .c-name  {width:15%;min-width:130px}
-  .users-table .c-id    {width:90px}   /* ADM01/VWR01 — M ו-W רחבות */
+  /* רוחב טבעי לפי סכום העמודות (1204). בלי width:100% —
+     חלוקה מחדש של הרוחב יצרה עודף של 2px ופס גלילה מיותר. */
+  .users-table{table-layout:fixed;width:1176px;border-collapse:collapse}
+  .users-table th,.users-table td{vertical-align:middle}
+  .users-table .c-name  {width:150px}
+  .users-table .c-id    {width:88px}
   .users-table .c-gender{width:92px}
-  .users-table .c-user  {width:15%;min-width:140px}
-  .users-table .c-pass  {width:24%;min-width:230px}
-  .users-table .c-role  {width:118px}
-  .users-table .c-act   {width:58px;text-align:center}
-  .users-table .c-ops   {width:250px}
-  .users-table .c-ops .chip{margin-bottom:4px}
-  .users-table .pill{white-space:nowrap}
+  .users-table .c-user  {width:140px}
+  .users-table .c-pass  {width:158px}
+  .users-table .c-state {width:132px}
+  .users-table .c-role  {width:112px}
+  .users-table .c-act   {width:52px;text-align:center}
+  .users-table .c-ops   {width:252px}
+  .users-table .pill{white-space:nowrap;display:inline-block}
+  /* מקום קבוע לכל כפתור, כדי שהעמודות יתיישרו בין השורות
+     גם כששחרור או איפוס אינם רלוונטיים */
+  .ops-grid{display:grid;grid-template-columns:50px 54px 82px 44px;gap:5px;justify-content:start}
+  .ops-grid .chip{padding:5px 0;text-align:center;font-size:12.5px;white-space:nowrap}
+  .state-cell{display:flex;flex-direction:column;gap:4px;align-items:flex-start}
+  .rules-note{padding:10px 18px 0;font-size:13px;color:var(--text-muted)}
+  .lock-tag{margin-inline-start:6px;white-space:nowrap}
+  .lock-warn{margin-inline-start:6px;white-space:nowrap;background:var(--gold-light);color:var(--gold-dark)}
   .pw-rules{font-size:11.5px;font-weight:400;color:var(--text-muted);
     margin-top:3px;line-height:1.35;white-space:normal;max-width:210px}
   .role-tag{display:inline-block;font-size:11px;font-weight:600;padding:1px 6px;
@@ -312,7 +322,7 @@ async function doLogin(){
     return;
   }
 
-  btn.disabled=true; btn.textContent='מתחבר...';
+  btn.disabled=true; btn.textContent='בודק סיסמה… (עד 5 שניות)';
   try{
     const r=await apiPost({action:'login', username:$('#u').value.trim(), password:$('#p').value});
     if(!r.ok) throw new Error(r.error);
@@ -1084,8 +1094,35 @@ function drawCoverMap(inst,C){
  * רענון ברקע היה דורס שדות שהמנהל מקליד בהם — לכן אינו אוטומטי.
  */
 async function renderUsers(){
-  if(W.users) return drawUsers();          // מיידי
-  return refreshUsers();
+  if(!W.users) return refreshUsers();
+
+  drawUsers();                              // מיידי מהמטמון
+
+  // מצב הנעילה משתנה בזמן אמת, ולכן תמיד מאמתים ברקע.
+  // הציור מחדש נעשה רק כשבטוח — אחרת נדרוס שדה שמקלידים בו.
+  try{
+    const r=await apiGet('users');
+    if(!r.ok) return;
+    W.users=r.data;
+    if(usersTableIsIdle_()) drawUsers();
+    else markUsersStale_();
+  }catch(e){ /* אין רשת — נשארים עם המטמון */ }
+}
+
+/** האם בטוח לצייר מחדש: אין פוקוס בטבלה ואין סיסמה שהוקלדה */
+function usersTableIsIdle_(){
+  const tbl=document.querySelector('.users-table');
+  if(!tbl) return true;
+  if(tbl.contains(document.activeElement)) return false;
+  return ![...tbl.querySelectorAll('input[type=password]')].some(i=>i.value);
+}
+
+function markUsersStale_(){
+  const n=document.querySelector('.rules-note');
+  if(n && !n.querySelector('.stale-flag'))
+    n.insertAdjacentHTML('beforeend',
+      ' <span class="stale-flag" style="color:var(--gold-dark);font-weight:600">' +
+      '· יש עדכון מהשרת — לחץ ״רענן״ כשתסיים</span>');
 }
 
 async function refreshUsers(){
@@ -1128,41 +1165,49 @@ function drawUsers(){
         <span class="note">מנהל רואה את הדשבורד · מפקח רואה רק את אפליקציית השטח</span>
         <button class="chip" style="margin-right:auto;font-weight:500"
                 onclick="invalidateUsers();refreshUsers()">רענן מהשרת</button></h3>
+      <div class="rules-note">סיסמה: ${esc(D.password_rules||'')} ·
+        נעילה אוטומטית אחרי ${D.max_login_fails} ניסיונות כושלים, למשך ${D.lockout_minutes} דקות</div>
       <div class="body" style="overflow-x:auto"><table class="users-table">
       <colgroup>
         <col class="c-name"><col class="c-id"><col class="c-gender"><col class="c-user">
-        <col class="c-pass"><col class="c-role"><col class="c-act"><col class="c-ops">
+        <col class="c-pass"><col class="c-state"><col class="c-role"><col class="c-act"><col class="c-ops">
       </colgroup>
       <thead><tr>
         <th>שם</th><th>מזהה</th><th>מגזר</th><th>שם משתמש</th>
-        <th>סיסמה<div class="pw-rules">${esc(D.password_rules||'')}</div></th>
-        <th>תפקיד</th><th>פעיל</th><th></th>
+        <th>סיסמה</th><th>מצב</th><th>תפקיד</th><th>פעיל</th><th>פעולות</th>
       </tr></thead><tbody>${U.map((u,i)=>`<tr>
         <td>${esc(u.name)}</td>
         <td class="num-cell">${esc(u.id)}</td>
         <td>${u.gender==='M'?'בנים':u.gender==='F'?'בנות/גנים':'—'}</td>
         <td><input class="form-input" style="padding:7px 10px;font-size:14px;width:100%;min-width:0"
              id="u-name-${i}" value="${esc(u.username)}" placeholder="באנגלית"></td>
-        <td>
-          <div style="display:flex;align-items:center;gap:6px">
-            <input class="form-input" style="padding:7px 10px;font-size:14px;flex:1;min-width:0"
-               id="u-pass-${i}" type="password" placeholder="${u.has_password?'שנה סיסמה':'הגדר סיסמה'}">
-            ${u.has_password?'<span class="pill p-ok">מוגדרת</span>'
-                            :'<span class="pill p-flag">חסרה</span>'}
-          </div></td>
+        <td><input class="form-input" style="padding:7px 10px;font-size:14px;width:100%;min-width:0"
+               id="u-pass-${i}" type="password" placeholder="${u.has_password?'שנה סיסמה':'הגדר סיסמה'}"></td>
+        <td><div class="state-cell">
+          ${u.has_password?'<span class="pill p-ok">סיסמה מוגדרת</span>'
+                          :'<span class="pill p-flag">סיסמה חסרה</span>'}
+          ${(u.lock&&u.lock.locked)
+            ? `<span class="pill p-flag" title="נעול אחרי ${u.lock.fails} ניסיונות">נעול · ${u.lock.minutes} דק׳</span>`
+            : ((u.lock&&u.lock.fails)
+               ? `<span class="pill lock-warn" title="ניסיונות כושלים">${u.lock.fails}/${D.max_login_fails} כשלונות</span>`
+               : '')}
+        </div></td>
         <td><select class="form-input" style="padding:7px 10px;font-size:14px" id="u-role-${i}">
               <option value="inspector" ${u.role!=='admin'&&u.role!=='viewer'?'selected':''}>מפקח</option>
               <option value="viewer" ${u.role==='viewer'?'selected':''}>צופה</option>
               <option value="admin" ${u.role==='admin'?'selected':''}>מנהל</option>
             </select></td>
         <td><input type="checkbox" id="u-act-${i}" ${u.active?'checked':''} style="width:16px;height:16px;accent-color:var(--teal)"></td>
-        <td>
-          <div style="display:flex;flex-wrap:wrap;gap:5px">
-            <button class="chip" onclick="saveUser(${i})">שמור</button>
-            ${u.has_password?`<button class="chip" onclick="resetPass(${i})">אפס סיסמה</button>`:''}
-            <button class="chip" style="color:var(--danger);border-color:#fecaca"
-                    onclick="removeUser(${i})">הסר</button>
-          </div></td>
+        <td><div class="ops-grid">
+          <button class="chip" onclick="saveUser(${i})">שמור</button>
+          ${(u.lock&&u.lock.locked)
+            ? `<button class="chip" style="color:var(--teal-dark);border-color:#9fd3c9;font-weight:600"
+                       onclick="unlockUser(${i})">שחרר</button>`
+            : '<span></span>'}
+          ${u.has_password?`<button class="chip" onclick="resetPass(${i})">אפס סיסמה</button>`:'<span></span>'}
+          <button class="chip" style="color:var(--danger);border-color:#fecaca"
+                  onclick="removeUser(${i})">הסר</button>
+        </div></td>
       </tr>`).join('')}</tbody></table></div></div>
     <div class="panel"><h3>הוספת מפקח</h3>
       <div style="padding:14px 18px;display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
@@ -1234,6 +1279,17 @@ async function resetPass(i){
     if(!r.ok) throw new Error(r.error);
     invalidateUsers(); await refreshUsers(); flash('הסיסמה של '+u.name+' אופסה');
   }catch(e){ flash('שגיאה: '+e.message, true); }
+}
+
+async function unlockUser(i){
+  const u=W.users.users[i];
+  if(!u.username){ flash('למשתמש אין שם משתמש'); return; }
+  try{
+    const r=await apiPost({action:'unlockuser', username:u.username});
+    if(!r.ok) throw new Error(r.error);
+    invalidateUsers(); await refreshUsers();
+    flash(r.data.unlocked ? (u.name+' שוחרר') : (r.data.note||'לא נמצאה נעילה'));
+  }catch(e){ flash('השחרור נכשל: '+e.message); }
 }
 
 async function removeUser(i){
