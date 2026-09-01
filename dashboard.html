@@ -257,6 +257,8 @@ const VER_LABEL  = { teacher:'מחנכת', principal:'מנהל', office:'מזכ�
 /* ═══ API ═══ */
 async function apiPost(payload){
   payload.key = CONFIG.ACCESS_KEY;
+  if(state.token) payload.token = state.token;
+  if(state.inspectorId) payload.inspector = state.inspectorId;   // מי מבקש
   const r = await fetch(CONFIG.API_URL,{method:'POST',body:JSON.stringify(payload),
     headers:{'Content-Type':'text/plain;charset=utf-8'}});
   return r.json();
@@ -1073,8 +1075,11 @@ function drawUsers(){
         <td>${u.gender==='M'?'בנים':u.gender==='F'?'בנות/גנים':'—'}</td>
         <td><input class="form-input" style="padding:7px 10px;font-size:14px;min-width:130px"
              id="u-name-${i}" value="${esc(u.username)}" placeholder="באנגלית"></td>
-        <td><input class="form-input" style="padding:7px 10px;font-size:14px;min-width:130px"
-             id="u-pass-${i}" type="password" placeholder="${u.has_password?'••••• מוגדרת':'לא הוגדרה'}"></td>
+        <td style="white-space:nowrap">
+          <input class="form-input" style="padding:7px 10px;font-size:14px;min-width:120px"
+             id="u-pass-${i}" type="password" placeholder="${u.has_password?'שנה סיסמה':'הגדר סיסמה'}">
+          ${u.has_password?'<span class="pill p-ok" style="margin-right:6px">מוגדרת</span>'
+                          :'<span class="pill p-flag" style="margin-right:6px">חסרה</span>'}</td>
         <td><select class="form-input" style="padding:7px 10px;font-size:14px" id="u-role-${i}">
               <option value="inspector" ${u.role!=='admin'?'selected':''}>מפקח</option>
               <option value="admin" ${u.role==='admin'?'selected':''}>מנהל</option>
@@ -1082,6 +1087,7 @@ function drawUsers(){
         <td><input type="checkbox" id="u-act-${i}" ${u.active?'checked':''} style="width:16px;height:16px;accent-color:var(--teal)"></td>
         <td style="white-space:nowrap">
           <button class="chip" onclick="saveUser(${i})">שמור</button>
+          ${u.has_password?`<button class="chip" onclick="resetPass(${i})">אפס סיסמה</button>`:''}
           <button class="chip" style="color:var(--danger);border-color:#fecaca"
                   onclick="removeUser(${i})">הסר</button></td>
       </tr>`).join('')}</tbody></table></div></div>
@@ -1141,6 +1147,16 @@ async function addUser(){
     if(!r.ok) throw new Error(r.error);
     await renderUsers();
     flash('נוסף: '+name+' ('+r.data.id+')');
+  }catch(e){ flash('שגיאה: '+e.message, true); }
+}
+
+async function resetPass(i){
+  const u=W.users.users[i];
+  if(!confirm('לאפס את הסיסמה של '+u.name+'?\n\nהוא לא יוכל להיכנס עד שתגדיר לו סיסמה חדשה.')) return;
+  try{
+    const r=await apiPost({action:'setuser', inspector_id:u.id, clear_password:'true'});
+    if(!r.ok) throw new Error(r.error);
+    await renderUsers(); flash('הסיסמה של '+u.name+' אופסה');
   }catch(e){ flash('שגיאה: '+e.message, true); }
 }
 
