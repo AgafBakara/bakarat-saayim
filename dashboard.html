@@ -135,6 +135,20 @@ tr.clickable td:first-child::after{content:'‹';color:var(--text-muted);margin-
   .container{padding:16px}
   th,td{padding:9px 12px}
 }
+  /* טבלת המשתמשים: רוחבים קבועים. בלעדיהם הדפדפן מחלק לפי תוכן,
+     ועמודת הפעולות ותגית הסטטוס נדחסות. */
+  .users-table{table-layout:fixed;min-width:1020px}
+  .users-table th,.users-table td{vertical-align:middle;overflow:hidden}
+  .users-table .c-name  {width:15%;min-width:130px}
+  .users-table .c-id    {width:90px}   /* ADM01/VWR01 — M ו-W רחבות */
+  .users-table .c-gender{width:92px}
+  .users-table .c-user  {width:15%;min-width:140px}
+  .users-table .c-pass  {width:24%;min-width:230px}
+  .users-table .c-role  {width:118px}
+  .users-table .c-act   {width:58px;text-align:center}
+  .users-table .c-ops   {width:250px}
+  .users-table .c-ops .chip{margin-bottom:4px}
+  .users-table .pill{white-space:nowrap}
   .pw-rules{font-size:11.5px;font-weight:400;color:var(--text-muted);
     margin-top:3px;line-height:1.35;white-space:normal;max-width:210px}
   .role-tag{display:inline-block;font-size:11px;font-weight:600;padding:1px 6px;
@@ -1064,7 +1078,17 @@ function drawCoverMap(inst,C){
 }
 
 /* ══════ ניהול משתמשים ══════ */
+/**
+ * סיבוב שרת ל-Apps Script עולה כ-3.5 שניות. לכן הלשונית מרנדרת
+ * מהמטמון, ופונה לשרת רק כשהמטמון ריק או בוטל אחרי שינוי.
+ * רענון ברקע היה דורס שדות שהמנהל מקליד בהם — לכן אינו אוטומטי.
+ */
 async function renderUsers(){
+  if(W.users) return drawUsers();          // מיידי
+  return refreshUsers();
+}
+
+async function refreshUsers(){
   $('#content').innerHTML='<div class="loading">טוען משתמשים…</div>';
   try{
     const r=await apiGet('users');
@@ -1072,9 +1096,13 @@ async function renderUsers(){
     W.users=r.data;
     drawUsers();
   }catch(e){
+    W.users=null;
     $('#content').innerHTML='<div class="panel"><div class="empty"><div class="ic">⚠</div>'+esc(e.message)+'</div></div>';
   }
 }
+
+/** ביטול המטמון אחרי שינוי, כדי שהתצוגה לא תישאר מיושנת */
+function invalidateUsers(){ W.users=null; }
 
 function drawUsers(){
   const D=W.users, U=D.users;
@@ -1097,8 +1125,15 @@ function drawUsers(){
 
   $('#content').innerHTML = banner + `
     <div class="panel"><h3>משתמשי המערכת
-        <span class="note">מנהל רואה את הדשבורד · מפקח רואה רק את אפליקציית השטח</span></h3>
-      <div class="body" style="overflow-x:auto"><table><thead><tr>
+        <span class="note">מנהל רואה את הדשבורד · מפקח רואה רק את אפליקציית השטח</span>
+        <button class="chip" style="margin-right:auto;font-weight:500"
+                onclick="invalidateUsers();refreshUsers()">רענן מהשרת</button></h3>
+      <div class="body" style="overflow-x:auto"><table class="users-table">
+      <colgroup>
+        <col class="c-name"><col class="c-id"><col class="c-gender"><col class="c-user">
+        <col class="c-pass"><col class="c-role"><col class="c-act"><col class="c-ops">
+      </colgroup>
+      <thead><tr>
         <th>שם</th><th>מזהה</th><th>מגזר</th><th>שם משתמש</th>
         <th>סיסמה<div class="pw-rules">${esc(D.password_rules||'')}</div></th>
         <th>תפקיד</th><th>פעיל</th><th></th>
@@ -1106,24 +1141,28 @@ function drawUsers(){
         <td>${esc(u.name)}</td>
         <td class="num-cell">${esc(u.id)}</td>
         <td>${u.gender==='M'?'בנים':u.gender==='F'?'בנות/גנים':'—'}</td>
-        <td><input class="form-input" style="padding:7px 10px;font-size:14px;min-width:130px"
+        <td><input class="form-input" style="padding:7px 10px;font-size:14px;width:100%;min-width:0"
              id="u-name-${i}" value="${esc(u.username)}" placeholder="באנגלית"></td>
-        <td style="white-space:nowrap">
-          <input class="form-input" style="padding:7px 10px;font-size:14px;min-width:120px"
-             id="u-pass-${i}" type="password" placeholder="${u.has_password?'שנה סיסמה':'הגדר סיסמה'}">
-          ${u.has_password?'<span class="pill p-ok" style="margin-right:6px">מוגדרת</span>'
-                          :'<span class="pill p-flag" style="margin-right:6px">חסרה</span>'}</td>
+        <td>
+          <div style="display:flex;align-items:center;gap:6px">
+            <input class="form-input" style="padding:7px 10px;font-size:14px;flex:1;min-width:0"
+               id="u-pass-${i}" type="password" placeholder="${u.has_password?'שנה סיסמה':'הגדר סיסמה'}">
+            ${u.has_password?'<span class="pill p-ok">מוגדרת</span>'
+                            :'<span class="pill p-flag">חסרה</span>'}
+          </div></td>
         <td><select class="form-input" style="padding:7px 10px;font-size:14px" id="u-role-${i}">
               <option value="inspector" ${u.role!=='admin'&&u.role!=='viewer'?'selected':''}>מפקח</option>
               <option value="viewer" ${u.role==='viewer'?'selected':''}>צופה</option>
               <option value="admin" ${u.role==='admin'?'selected':''}>מנהל</option>
             </select></td>
         <td><input type="checkbox" id="u-act-${i}" ${u.active?'checked':''} style="width:16px;height:16px;accent-color:var(--teal)"></td>
-        <td style="white-space:nowrap">
-          <button class="chip" onclick="saveUser(${i})">שמור</button>
-          ${u.has_password?`<button class="chip" onclick="resetPass(${i})">אפס סיסמה</button>`:''}
-          <button class="chip" style="color:var(--danger);border-color:#fecaca"
-                  onclick="removeUser(${i})">הסר</button></td>
+        <td>
+          <div style="display:flex;flex-wrap:wrap;gap:5px">
+            <button class="chip" onclick="saveUser(${i})">שמור</button>
+            ${u.has_password?`<button class="chip" onclick="resetPass(${i})">אפס סיסמה</button>`:''}
+            <button class="chip" style="color:var(--danger);border-color:#fecaca"
+                    onclick="removeUser(${i})">הסר</button>
+          </div></td>
       </tr>`).join('')}</tbody></table></div></div>
     <div class="panel"><h3>הוספת מפקח</h3>
       <div style="padding:14px 18px;display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
@@ -1169,7 +1208,7 @@ async function saveUser(i){
   try{
     const r=await apiPost(payload);
     if(!r.ok) throw new Error(r.error);
-    await renderUsers();
+    invalidateUsers(); await refreshUsers();
     flash('נשמר: '+u.name);
   }catch(e){ flash('שגיאה: '+e.message, true); }
 }
@@ -1182,7 +1221,7 @@ async function addUser(){
     const r=await apiPost({action:'adduser', name:name, gender:$('#new-gender').value,
       username:$('#new-user').value.trim(), password:pw, role:$('#new-role').value});
     if(!r.ok) throw new Error(r.error);
-    await renderUsers();
+    invalidateUsers(); await refreshUsers();
     flash('נוסף: '+name+' ('+r.data.id+')');
   }catch(e){ flash('שגיאה: '+e.message, true); }
 }
@@ -1193,7 +1232,7 @@ async function resetPass(i){
   try{
     const r=await apiPost({action:'setuser', inspector_id:u.id, clear_password:'true'});
     if(!r.ok) throw new Error(r.error);
-    await renderUsers(); flash('הסיסמה של '+u.name+' אופסה');
+    invalidateUsers(); await refreshUsers(); flash('הסיסמה של '+u.name+' אופסה');
   }catch(e){ flash('שגיאה: '+e.message, true); }
 }
 
@@ -1203,7 +1242,7 @@ async function removeUser(i){
   try{
     const r=await apiPost({action:'deluser', inspector_id:u.id});
     if(!r.ok) throw new Error(r.error);
-    await renderUsers();
+    invalidateUsers(); await refreshUsers();
     flash(r.data.deleted ? (u.name+' נמחק') : (u.name+' הושבת'));
   }catch(e){ flash('שגיאה: '+e.message, true); }
 }
@@ -1214,7 +1253,7 @@ async function toggleAuth(on){
   try{
     const r=await apiPost({action:'setauth', value: on?'true':'false'});
     if(!r.ok) throw new Error(r.error);
-    await renderUsers();
+    invalidateUsers(); await refreshUsers();
     flash(on?'האימות הודלק':'האימות כובה');
   }catch(e){ flash('שגיאה: '+e.message, true); }
 }
