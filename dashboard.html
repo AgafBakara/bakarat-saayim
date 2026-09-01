@@ -329,10 +329,9 @@ async function load(){
     const T=r.data.totals||{};
     const bits=[];
     if(T.hidden_tests) bits.push(T.hidden_tests+' רשומות בדיקה מוסתרות');
-    if(T.test_mode)    bits.push('⚠ מצב בדיקה דלוק בשרת');
     if(!T.auth_on)     bits.push('⚠ אימות סיסמה כבוי');
     $('#hidden-note').innerHTML = bits.join(' · ');
-    $('#hidden-note').style.color = (T.test_mode||!T.auth_on) ? 'var(--danger)' : '';
+    $('#hidden-note').style.color = (!T.auth_on) ? 'var(--danger)' : '';
     render();
   }catch(e){
     $('#content').innerHTML='<div class="panel"><div class="empty"><div class="ic">⚠</div>'+esc(e.message)+'</div></div>';

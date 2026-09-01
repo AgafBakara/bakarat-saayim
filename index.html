@@ -738,8 +738,7 @@ async function revealSubject(instId) {
       assignment_id: state.assignment.institution.assignment_id,
       lat:           state.arrival.lat,
       lng:           state.arrival.lng,
-      accuracy:      state.arrival.accuracy,
-      test:          CONFIG.TEST_MODE ? 'true' : 'false'
+      accuracy:      state.arrival.accuracy
     });
     if (!r.ok) throw new Error(r.error);
     return r.data;
