@@ -135,6 +135,10 @@ tr.clickable td:first-child::after{content:'‹';color:var(--text-muted);margin-
   .container{padding:16px}
   th,td{padding:9px 12px}
 }
+  .role-tag{display:inline-block;font-size:11px;font-weight:600;padding:1px 6px;
+    border-radius:9px;vertical-align:middle;margin-inline-start:5px}
+  .role-admin{background:#152350;color:#fff}
+  .role-viewer{background:#c6a636;color:#3d3000}
 </style>
 </head>
 <body>
@@ -219,7 +223,7 @@ const CONFIG = {
 /* סיווג מוסד — לא מסווגים מדגם קטן מדי */
 const RULES = { MIN_CHECKS: 5, CONC_RATE: 20, CONC_ABS: 3 };
 
-const state = { token:null, name:null, inspectorId:null, days:30, tab:'base', data:null };
+const state = { token:null, name:null, inspectorId:null, role:null, days:30, tab:'base', data:null };
 const W = {};   /* מטמון לדריל דאון */
 
 const $  = s => document.querySelector(s);
@@ -281,8 +285,8 @@ async function doLogin(){
     const id=$('#sel-admin').value;
     const who=ADMINS.find(i=>i.id===id);
     if(!who){ err.textContent='בחר משתמש מהרשימה'; err.style.display='block'; return; }
-    state.token=null; state.name=who.name; state.inspectorId=who.id;
-    sessionStorage.setItem('bakaraDash', JSON.stringify({t:null,n:who.name,i:who.id}));
+    state.token=null; state.name=who.name; state.inspectorId=who.id; state.role=who.role;
+    sessionStorage.setItem('bakaraDash', JSON.stringify({t:null,n:who.name,i:who.id,r:who.role}));
     enter();
     return;
   }
@@ -291,15 +295,21 @@ async function doLogin(){
   try{
     const r=await apiPost({action:'login', username:$('#u').value.trim(), password:$('#p').value});
     if(!r.ok) throw new Error(r.error);
-    if(r.data.role!=='admin') throw new Error('משתמש זה אינו מורשה לדשבורד ההנהלה');
-    state.token=r.data.token; state.name=r.data.name; state.inspectorId=r.data.id;
-    sessionStorage.setItem('bakaraDash', JSON.stringify({t:state.token,n:state.name,i:r.data.id}));
+    if(r.data.role!=='admin' && r.data.role!=='viewer')
+      throw new Error('משתמש זה אינו מורשה לדשבורד ההנהלה');
+    state.token=r.data.token; state.name=r.data.name; state.inspectorId=r.data.id; state.role=r.data.role;
+    sessionStorage.setItem('bakaraDash', JSON.stringify({t:state.token,n:state.name,i:r.data.id,r:r.data.role}));
     enter();
   }catch(e){ err.textContent=e.message||'ההתחברות נכשלה'; err.style.display='block'; }
   finally{ btn.disabled=false; btn.textContent='כניסה'; $('#p').value=''; }
 }
 function enter(){
-  $('#who').textContent=state.name;
+  // הסתרה לנוחות בלבד. האכיפה היא בשרת: צופה שיקרא ל-users או ל-setauth ייחסם.
+  const isAdmin = state.role === 'admin';
+  const ut = document.querySelector('.tab[data-t="users"]');
+  if(ut) ut.style.display = isAdmin ? '' : 'none';
+  if(!isAdmin && state.tab==='users') state.tab='base';
+  $('#who').textContent = state.name + (state.role==='viewer' ? ' · צפייה בלבד' : '');
   $('#btn-logout').style.display='';
   $('#screen-login').classList.remove('active');
   $('#screen-main').classList.add('active');
@@ -349,6 +359,19 @@ function openModal(title, sub, kpis, html){
 }
 function closeModal(){ $('#modal-bg').classList.remove('show'); }
 document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeModal(); });
+
+/* תפקיד הבודק — מנהל שבודק בעצמו מסומן, כדי שיהיה ברור מי ביצע מה */
+function staffRole(name){
+  const st=(state.data&&state.data.staff)||[];
+  const m=st.filter(s=>s.name===name)[0];
+  return m ? m.role : null;
+}
+function roleTag(name){
+  const r=staffRole(name);
+  if(r==='admin')  return ' <span class="role-tag role-admin">מנהל</span>';
+  if(r==='viewer') return ' <span class="role-tag role-viewer">צופה</span>';
+  return '';
+}
 
 function group(arr,key){
   const m={}; arr.forEach(x=>{const k=x[key]||'—';(m[k]=m[k]||[]).push(x);}); return m;
@@ -571,7 +594,7 @@ function inspectorPanel(C){
     <div class="body"><table><thead><tr>
       <th>מפקח</th><th>ימים</th><th>ביקורים</th><th>בדיקות</th><th>ליום</th><th>% חריגות</th><th>זמן דיווח</th>
     </tr></thead><tbody>${rows.map(r=>`<tr class="clickable" onclick="drillInspector('${esc(r.name).replace(/'/g,'&#39;')}')">
-      <td>${esc(r.name)}</td><td class="num-cell">${r.days}</td><td class="num-cell">${r.visits}</td>
+      <td>${esc(r.name)}${roleTag(r.name)}</td><td class="num-cell">${r.days}</td><td class="num-cell">${r.visits}</td>
       <td class="num-cell">${r.n}</td><td class="num-cell">${r.perDay}</td>
       <td class="num-cell" style="color:${r.flagRate>25?'var(--danger)':r.flagRate===0?'var(--gold-dark)':'inherit'}">${r.flagRate}%</td>
       <td class="num-cell">${fmtDur(r.avg)}</td>
@@ -830,7 +853,7 @@ function renderTime(){
       <th>מפקח</th><th>ימים</th><th>ביקורים</th><th>בדיקות</th><th>אורך יום</th>
       <th>שהייה במוסד</th><th>נסיעה בין מוסדות</th><th>לא מוסבר ליום</th><th>ניצול</th>
     </tr></thead><tbody>${rows.map(r=>`<tr class="clickable" onclick="drillInspDays('${esc(r.name).replace(/'/g,'&#39;')}')">
-      <td>${esc(r.name)}</td><td class="num-cell">${r.days}</td>
+      <td>${esc(r.name)}${roleTag(r.name)}</td><td class="num-cell">${r.days}</td>
       <td class="num-cell">${r.visits}</td><td class="num-cell">${r.checks}</td>
       <td class="num-cell">${fmtHM(r.avgSpan)}</td>
       <td class="num-cell">${fmtHM(r.avgVisit)}</td>
@@ -844,7 +867,7 @@ function renderTime(){
 function dayRow(d,i,fn){
   return `<tr class="clickable" onclick="${fn}(${i})">
     <td style="white-space:nowrap">${esc(d.date)}</td>
-    <td style="white-space:nowrap">${esc(d.inspector)}</td>
+    <td style="white-space:nowrap">${esc(d.inspector)}${roleTag(d.inspector)}</td>
     <td class="num-cell">${clock(d.checks[0].dispatch_time||d.checks[0].arrival_time)}</td>
     <td class="num-cell">${clock(d.checks[d.checks.length-1].close_time)}</td>
     <td class="num-cell">${fmtHM(d.span)}</td>
@@ -1080,7 +1103,8 @@ function drawUsers(){
           ${u.has_password?'<span class="pill p-ok" style="margin-right:6px">מוגדרת</span>'
                           :'<span class="pill p-flag" style="margin-right:6px">חסרה</span>'}</td>
         <td><select class="form-input" style="padding:7px 10px;font-size:14px" id="u-role-${i}">
-              <option value="inspector" ${u.role!=='admin'?'selected':''}>מפקח</option>
+              <option value="inspector" ${u.role!=='admin'&&u.role!=='viewer'?'selected':''}>מפקח</option>
+              <option value="viewer" ${u.role==='viewer'?'selected':''}>צופה</option>
               <option value="admin" ${u.role==='admin'?'selected':''}>מנהל</option>
             </select></td>
         <td><input type="checkbox" id="u-act-${i}" ${u.active?'checked':''} style="width:16px;height:16px;accent-color:var(--teal)"></td>
@@ -1103,7 +1127,8 @@ function drawUsers(){
           <input class="form-input" id="new-pass" type="password" style="min-width:140px" placeholder="8 תווים לפחות"></div>
         <div><label class="field-label">תפקיד</label>
           <select class="form-input" id="new-role" style="min-width:110px">
-            <option value="inspector">מפקח</option><option value="admin">מנהל</option></select></div>
+            <option value="inspector">מפקח</option><option value="viewer">צופה</option>
+            <option value="admin">מנהל</option></select></div>
         <button class="btn-primary" style="width:auto;padding:12px 26px;margin:0" onclick="addUser()">הוסף</button>
       </div></div>
 
@@ -1196,22 +1221,22 @@ function flash(msg, bad){
 async function boot(){
   try{
     const sv=JSON.parse(sessionStorage.getItem('bakaraDash')||'null');
-    if(sv&&(sv.t||sv.i)){ state.token=sv.t; state.name=sv.n; state.inspectorId=sv.i||null; return enter(); }
+    if(sv&&(sv.t||sv.i)){ state.token=sv.t; state.name=sv.n; state.inspectorId=sv.i||null; state.role=sv.r||'admin'; return enter(); }
   }catch(e){}
 
   // ניסיון לשלוף רשימת מפקחים. מצליח רק כשהאימות כבוי.
   const btn=$('#btn-login'), err=$('#err');
   btn.disabled=true;
   try{
-    const r=await apiGet('inspectors');
+    const r=await apiGet('inspectors',{scope:'dashboard'});
     if(r.ok && r.data && r.data.length){
-      // מפקחים אינם מורשים לדשבורד — רק מי שסומן admin בגיליון
-      const admins=r.data.filter(i=>i.role==='admin');
+      // מפקחי שטח אינם מורשים לדשבורד — רק admin ו-viewer
+      const admins=r.data.filter(i=>i.role==='admin'||i.role==='viewer');
       if(!admins.length){
         $('#mode-pick').style.display='';
         $('#sel-admin').innerHTML='<option value="">—</option>';
         $('#err').innerHTML='לא הוגדר משתמש הנהלה.<br>'+
-          '<span style="font-weight:400">בגיליון ״מפקחים״, בעמודה role, כתוב admin בשורה שלך.</span>';
+          '<span style="font-weight:400">בגיליון ״מפקחים״, בעמודה role, כתוב admin או viewer בשורה שלך.</span>';
         $('#err').style.display='block';
         return;
       }
@@ -1220,7 +1245,9 @@ async function boot(){
       ADMINS.length=0;
       admins.forEach(i=>{ ADMINS.push(i);
         const o=document.createElement('option');
-        o.value=i.id; o.textContent=i.name; sel.appendChild(o); });
+        o.value=i.id;
+        o.textContent=i.name + (i.role==='viewer' ? ' (צפייה בלבד)' : '');
+        sel.appendChild(o); });
       $('#mode-pick').style.display='';
       $('#login-sub').innerHTML='הנהלה בלבד · <span style="color:var(--gold-dark);font-weight:600">אימות סיסמה כבוי</span>';
       btn.disabled=false;
