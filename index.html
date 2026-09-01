@@ -345,8 +345,27 @@ textarea.form-input { min-height: 84px; resize: vertical; line-height: 1.5; }
       <div class="login-icon">✓</div>
       <div class="login-title">בקרת סייעים</div>
       <div class="login-subtitle">עיריית בני ברק · אגף בקרה</div>
-      <label class="field-label" for="sel-inspector">שם המפקח</label>
-      <select class="form-select" id="sel-inspector"><option value="">בחר מהרשימה...</option></select>
+      <!-- מצב א: אימות פעיל — שם משתמש חופשי, בלי רשימת שמות -->
+      <div id="mode-pass" style="display:none">
+        <label class="field-label" for="in-user">שם משתמש</label>
+        <input class="form-input" id="in-user" type="text" autocomplete="username"
+               autocapitalize="none" autocorrect="off" spellcheck="false"
+               onkeydown="if(event.key==='Enter')$('#in-pass').focus()">
+        <label class="field-label" for="in-pass" style="margin-top:12px">סיסמה</label>
+        <input class="form-input" id="in-pass" type="password" autocomplete="current-password"
+               onkeydown="if(event.key==='Enter')doLogin()">
+        <label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:14px;cursor:pointer">
+          <input type="checkbox" id="chk-remember" style="width:16px;height:16px">
+          <span>זכור את שם המשתמש במכשיר זה</span>
+        </label>
+      </div>
+
+      <!-- מצב ב: אימות כבוי — הרשימה, כפי שהיה -->
+      <div id="mode-pick" style="display:none">
+        <label class="field-label" for="sel-inspector">שם המפקח</label>
+        <select class="form-select" id="sel-inspector"><option value="">בחר מהרשימה...</option></select>
+      </div>
+
       <div id="login-err" style="display:none;margin-top:12px;padding:10px 12px;border-radius:8px;
            background:var(--danger-light);color:#7f1d1d;font-size:14px;font-weight:500"></div>
       <button class="btn-primary" id="btn-login" onclick="doLogin()">כניסה</button>
@@ -514,7 +533,9 @@ const CONFIG = {
 
 const STORAGE = {
   INSPECTOR: CONFIG.CACHE_PREFIX + 'inspector',
-  SESSION:   CONFIG.CACHE_PREFIX + 'session'
+  SESSION:   CONFIG.CACHE_PREFIX + 'session',
+  TOKEN:     CONFIG.CACHE_PREFIX + 'token',      // טוקן סשן — נמחק ביציאה ופג אחרי 14 שעות
+  USERNAME:  CONFIG.CACHE_PREFIX + 'username'    // ״זכור אותי״ — שם משתמש בלבד. לעולם לא סיסמה.
 };
 
 /* ═══════════════════════════════════════════════════════════
@@ -611,6 +632,8 @@ const DEMO = {
 const SERVER_INSPECTORS = [];
 
 const state = {
+  authRequired: null,    // null = טרם נקבע; נקבע מפעולת mode
+  token: null,
   inspector: null,
   assignment: null,      // {institution, dispatchTime}
   arrival: null,         // {time, lat, lng, accuracy, distance}
@@ -696,7 +719,28 @@ async function apiGet(action, params = {}) {
   }).toString();
   const res = await fetch(`${CONFIG.API_URL}?${qs}`);
   if (!res.ok) throw new Error('HTTP ' + res.status);
-  return res.json();
+  return sessionGuard_(await res.json());
+}
+
+/**
+ * סשן שפג באמצע יום עבודה. בלי זה המפקח היה מקבל שגיאה סתומה
+ * מול השער ולא מבין שעליו להתחבר מחדש.
+ * הדיווח שכבר נשמר מקומית אינו נמחק — הוא יישלח אחרי כניסה מחדש.
+ */
+function sessionGuard_(r) {
+  if (r && !r.ok && /החיבור פג|נדרשת התחברות/.test(r.error || '') && state.token) {
+    localStorage.removeItem(STORAGE.TOKEN);
+    state.token = null; state.inspector = null;
+    $('#btn-logout').style.display = 'none';
+    stopGps();
+    showScreen('login');
+    const err = $('#login-err');
+    err.textContent = 'החיבור פג. התחבר מחדש.';
+    err.style.display = 'block';
+    const saved = localStorage.getItem(STORAGE.USERNAME);
+    if (saved) { $('#in-user').value = saved; $('#in-pass').focus(); }
+  }
+  return r;
 }
 async function apiPost(payload) {
   payload.key = CONFIG.ACCESS_KEY || '';
@@ -707,7 +751,8 @@ async function apiPost(payload) {
     headers: { 'Content-Type': 'text/plain;charset=utf-8' }
   });
   if (!res.ok) throw new Error('HTTP ' + res.status);
-  return res.json();
+  const j = await res.json();
+  return payload.action === 'login' ? j : sessionGuard_(j);
 }
 
 /* ── שיגור יעד ─────────────────────────────────────────── */
@@ -803,6 +848,68 @@ function haversine(lat1, lng1, lat2, lng2) {
    LOGIN
    ═══════════════════════════════════════════════════════════ */
 
+/**
+ * קובע באיזה מצב אימות השרת נמצא, ומרנדר את מסך הכניסה המתאים.
+ * מפורש ולא דרך catch — כשל רשת לא ייראה כמו ״אימות פעיל״.
+ */
+async function setupLogin() {
+  if (CONFIG.DEMO_MODE) { state.authRequired = false; showPickMode(); return populateInspectors(); }
+
+  const err = $('#login-err'), btn = $('#btn-login');
+  btn.disabled = true;
+  try {
+    const r = await apiGet('mode');
+    if (!r.ok) throw new Error(r.error || 'השרת דחה את הבקשה');
+    state.authRequired = !!(r.data && r.data.auth_required);
+  } catch (e) {
+    btn.disabled = true;
+    err.innerHTML = 'לא ניתן להתחבר לשרת.<br>' +
+      '<span style="font-weight:400">' + esc(e.message) + '</span>';
+    err.style.display = 'block';
+    return;
+  }
+
+  if (state.authRequired) {
+    showPassMode();
+    btn.disabled = false;
+    const saved = localStorage.getItem(STORAGE.USERNAME);
+    if (saved) { $('#in-user').value = saved; $('#chk-remember').checked = true; $('#in-pass').focus(); }
+    else $('#in-user').focus();
+    return;
+  }
+
+  showPickMode();
+  await populateInspectors();
+}
+
+function showPassMode() { $('#mode-pass').style.display = ''; $('#mode-pick').style.display = 'none'; }
+function showPickMode() { $('#mode-pick').style.display = ''; $('#mode-pass').style.display = 'none'; }
+
+/**
+ * שחזור סשן שמור. מאמת מול השרת שהטוקן עדיין תקף —
+ * אחרת המפקח היה מגיע למסך הבית ונכשל רק בשיגור, בשטח.
+ */
+async function restoreSession() {
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem(STORAGE.TOKEN) || 'null'); } catch (e) {}
+  if (!saved || !saved.t || !saved.i) return false;
+
+  state.token = saved.t;
+
+  let r;
+  try { r = await apiGet('whoami'); }
+  catch (e) { state.token = null; return false; }   // אין רשת — מסך כניסה
+
+  if (r.ok) {
+    state.inspector = r.data;                       // זהות מהשרת, לא מהמכשיר
+    return true;
+  }
+  // טוקן פג, נשלל, או שהמשתמש הושבת — מנקים ומחזירים למסך כניסה
+  localStorage.removeItem(STORAGE.TOKEN);
+  state.token = null; state.inspector = null;
+  return false;
+}
+
 async function populateInspectors() {
   const sel = $('#sel-inspector');
   const btn = $('#btn-login');
@@ -845,15 +952,59 @@ function addInspectorOption(sel, i) {
   sel.appendChild(o);
 }
 
-function doLogin() {
-  const id = $('#sel-inspector').value;
+async function doLogin() {
   const err = $('#login-err');
-  if (!id) { err.textContent = 'בחר שם מהרשימה'; err.style.display = 'block'; return; }
   err.style.display = 'none';
+
+  if (state.authRequired) return doLoginPassword(err);
+  return doLoginPick(err);
+}
+
+/* אימות פעיל — שם משתמש וסיסמה */
+async function doLoginPassword(err) {
+  const btn  = $('#btn-login');
+  const user = $('#in-user').value.trim();
+  const pass = $('#in-pass').value;
+  if (!user || !pass) {
+    err.textContent = 'הזן שם משתמש וסיסמה';
+    err.style.display = 'block';
+    return;
+  }
+  btn.disabled = true; btn.textContent = 'מתחבר…';
+  try {
+    const r = await apiPost({ action: 'login', username: user, password: pass });
+    // הודעת השרת אחידה ואינה מבדילה בין שם משתמש לסיסמה. לא מוסיפים אבחנה כאן.
+    if (!r.ok) throw new Error(r.error || 'ההתחברות נכשלה');
+
+    state.token = r.data.token;
+    state.inspector = { id: r.data.id, name: r.data.name, gender: r.data.gender, role: r.data.role };
+    localStorage.setItem(STORAGE.TOKEN, JSON.stringify({ t: state.token, i: state.inspector }));
+
+    if ($('#chk-remember').checked) localStorage.setItem(STORAGE.USERNAME, user);
+    else localStorage.removeItem(STORAGE.USERNAME);
+
+    enterApp();
+  } catch (e) {
+    err.textContent = e.message || 'ההתחברות נכשלה';
+    err.style.display = 'block';
+  } finally {
+    btn.disabled = false; btn.textContent = 'כניסה';
+    $('#in-pass').value = '';           // הסיסמה לא נשארת בשדה
+  }
+}
+
+/* אימות כבוי — בחירה מהרשימה, כפי שהיה */
+function doLoginPick(err) {
+  const id = $('#sel-inspector').value;
+  if (!id) { err.textContent = 'בחר שם מהרשימה'; err.style.display = 'block'; return; }
   const src = CONFIG.DEMO_MODE ? DEMO.inspectors : SERVER_INSPECTORS;
   state.inspector = src.find(i => i.id === id);
   if (!state.inspector) { toast('מפקח לא מזוהה', 'error'); return; }
   localStorage.setItem(STORAGE.INSPECTOR, id);
+  enterApp();
+}
+
+function enterApp() {
   $('#btn-logout').style.display = '';
   const h = new Date().getHours();
   $('#greet-time').textContent = h < 12 ? 'בוקר טוב' : h < 17 ? 'צהריים טובים' : 'ערב טוב';
@@ -862,10 +1013,15 @@ function doLogin() {
   showScreen('home');
 }
 
-function logout() {
+async function logout() {
   if (state.assignment && !confirm('יש יעד פתוח. לצאת בכל זאת?')) return;
+  // ביטול הסשן בשרת. כישלון כאן לא ימנע יציאה מקומית.
+  if (state.token) { try { await apiPost({ action: 'logout', token: state.token }); } catch (e) {} }
+  localStorage.removeItem(STORAGE.TOKEN);          // שם המשתמש נשאר, אם ביקש ״זכור אותי״
+  state.token = null;
   state.inspector = null; state.assignment = null; state.subject = null;
   $('#btn-logout').style.display = 'none';
+  $('#in-pass').value = '';
   stopGps();
   showScreen('login');
 }
@@ -1430,7 +1586,8 @@ window.addEventListener('offline', () => { state.online = false; updateSyncPill(
 (async function boot() {
   try { await openDB(); state.queue = await dbAll(); } catch (e) { console.error(e); }
   updateSyncPill();
-  await populateInspectors();
+  await setupLogin();
+  if (state.authRequired && await restoreSession()) enterApp();
   if (!CONFIG.DEMO_MODE) setInterval(flushQueue, CONFIG.SYNC_INTERVAL_MS);
 })();
 </script>

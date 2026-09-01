@@ -167,7 +167,12 @@ tr.clickable td:first-child::after{content:'‹';color:var(--text-muted);margin-
         <label class="field-label" for="u">שם משתמש</label>
         <input class="form-input" id="u" autocapitalize="off" spellcheck="false">
         <label class="field-label" for="p" style="margin-top:14px">סיסמה</label>
-        <input class="form-input" id="p" type="password" onkeydown="if(event.key===\'Enter\')doLogin()">
+        <input class="form-input" id="p" type="password" autocomplete="current-password"
+               onkeydown="if(event.key==='Enter')doLogin()">
+        <label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:14px;cursor:pointer">
+          <input type="checkbox" id="chk-remember" style="width:16px;height:16px">
+          <span>זכור את שם המשתמש במכשיר זה</span>
+        </label>
       </div>
       <div class="err" id="err"></div>
       <button class="btn-primary" id="btn-login" onclick="doLogin()">כניסה</button>
@@ -299,6 +304,8 @@ async function doLogin(){
       throw new Error('משתמש זה אינו מורשה לדשבורד ההנהלה');
     state.token=r.data.token; state.name=r.data.name; state.inspectorId=r.data.id; state.role=r.data.role;
     sessionStorage.setItem('bakaraDash', JSON.stringify({t:state.token,n:state.name,i:r.data.id,r:r.data.role}));
+    if($('#chk-remember').checked) localStorage.setItem('bakaraDashUser', $('#u').value.trim());
+    else localStorage.removeItem('bakaraDashUser');
     enter();
   }catch(e){ err.textContent=e.message||'ההתחברות נכשלה'; err.style.display='block'; }
   finally{ btn.disabled=false; btn.textContent='כניסה'; $('#p').value=''; }
@@ -1224,9 +1231,33 @@ async function boot(){
     if(sv&&(sv.t||sv.i)){ state.token=sv.t; state.name=sv.n; state.inspectorId=sv.i||null; state.role=sv.r||'admin'; return enter(); }
   }catch(e){}
 
-  // ניסיון לשלוף רשימת מפקחים. מצליח רק כשהאימות כבוי.
   const btn=$('#btn-login'), err=$('#err');
   btn.disabled=true;
+
+  // מצב האימות נקבע מפורשות ולא מנפילה ב-catch:
+  // כשל רשת לא אמור להיראות כמו ״אימות פעיל״.
+  let authOn;
+  try{
+    const m=await apiGet('mode');
+    if(!m.ok) throw new Error(m.error||'השרת דחה את הבקשה');
+    authOn = !!(m.data && m.data.auth_required);
+  }catch(e){
+    err.innerHTML='לא ניתן להתחבר לשרת.<br>'+
+      '<span style="font-weight:400">'+esc(e.message)+'</span>';
+    err.style.display='block';
+    return;
+  }
+
+  if(authOn){
+    $('#mode-pass').style.display='';
+    btn.disabled=false;
+    const saved=localStorage.getItem('bakaraDashUser');
+    if(saved){ $('#u').value=saved; $('#chk-remember').checked=true; $('#p').focus(); }
+    else $('#u').focus();
+    return;
+  }
+
+  // אימות כבוי — הרשימה עדיין נדרשת
   try{
     const r=await apiGet('inspectors',{scope:'dashboard'});
     if(r.ok && r.data && r.data.length){
@@ -1253,10 +1284,12 @@ async function boot(){
       btn.disabled=false;
       return;
     }
-    throw new Error(r.error||'');
+    throw new Error(r.error||'לא הוחזרו משתמשים');
   }catch(e){
-    $('#mode-pass').style.display='';
-    btn.disabled=false;
+    err.innerHTML='לא ניתן לטעון את רשימת המשתמשים.<br>'+
+      '<span style="font-weight:400">'+esc(e.message)+'</span>';
+    err.style.display='block';
+    btn.disabled=true;
   }
 }
 boot();
