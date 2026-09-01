@@ -178,6 +178,7 @@ tr.clickable td:first-child::after{content:'‹';color:var(--text-muted);margin-
       <button class="tab"        data-t="results" onclick="setTab('results')">תוצאות בקרה</button>
       <button class="tab"        data-t="time"    onclick="setTab('time')">פעילות מפקחים</button>
       <button class="tab"        data-t="cover"   onclick="setTab('cover')">כיסוי ומפה</button>
+      <button class="tab"        data-t="users"   onclick="setTab('users')">משתמשים</button>
     </div>
     <div class="toolbar">
       <div id="range-chips" style="display:flex;gap:10px">
@@ -194,6 +195,7 @@ tr.clickable td:first-child::after{content:'‹';color:var(--text-muted);margin-
   </div>
 </section>
 
+<div id="flash" style="display:none"></div>
 <div class="modal-bg" id="modal-bg" onclick="if(event.target===this)closeModal()">
   <div class="modal">
     <div class="modal-head">
@@ -312,7 +314,7 @@ function setRange(d){
 function setTab(t){
   state.tab=t;
   $$('.tab').forEach(x=>x.classList.toggle('active',x.dataset.t===t));
-  $('#range-chips').style.visibility = (t==='base') ? 'hidden' : 'visible';
+  $('#range-chips').style.visibility = (t==='base'||t==='users') ? 'hidden' : 'visible';
   if(state.data) render();
 }
 
@@ -405,6 +407,7 @@ function render(){
   if(state.tab==='base')    return renderBase();
   if(state.tab==='results') return renderResults();
   if(state.tab==='time')    return renderTime();
+  if(state.tab==='users')   return renderUsers();
   return renderCoverage();
 }
 
@@ -1025,6 +1028,153 @@ function drawCoverMap(inst,C){
   if(pts.length) map.fitBounds(L.latLngBounds(pts).pad(0.12));
   setTimeout(()=>map.invalidateSize(),150);
   setTimeout(()=>map.invalidateSize(),600);
+}
+
+/* ══════ ניהול משתמשים ══════ */
+async function renderUsers(){
+  $('#content').innerHTML='<div class="loading">טוען משתמשים…</div>';
+  try{
+    const r=await apiGet('users');
+    if(!r.ok) throw new Error(r.error);
+    W.users=r.data;
+    drawUsers();
+  }catch(e){
+    $('#content').innerHTML='<div class="panel"><div class="empty"><div class="ic">⚠</div>'+esc(e.message)+'</div></div>';
+  }
+}
+
+function drawUsers(){
+  const D=W.users, U=D.users;
+  const banner = D.auth_on
+    ? `<div class="panel" style="border-color:#bbf7d0;background:var(--success-light)">
+        <div style="padding:14px 18px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+          <span style="font-weight:700;color:#14532d">אימות סיסמה פעיל</span>
+          <span style="font-size:13.5px;color:#14532d">כל כניסה למערכת דורשת שם משתמש וסיסמה.</span>
+          <button class="chip" style="margin-right:auto" onclick="toggleAuth(false)">כבה אימות</button>
+        </div></div>`
+    : `<div class="panel" style="border-color:#f0dd9e;background:var(--gold-light)">
+        <div style="padding:14px 18px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+          <span style="font-weight:700;color:var(--gold-dark)">אימות סיסמה כבוי</span>
+          <span style="font-size:13.5px;color:var(--gold-dark)">${
+            D.ready_for_auth ? 'כל המשתמשים מוכנים — אפשר להדליק.'
+            : 'חסרים שם משתמש או סיסמה ל: ' + esc(D.blocking.join(', '))}</span>
+          <button class="chip" style="margin-right:auto${D.ready_for_auth?'':';opacity:.45;pointer-events:none'}"
+            onclick="toggleAuth(true)">הדלק אימות</button>
+        </div></div>`;
+
+  $('#content').innerHTML = banner + `
+    <div class="panel"><h3>משתמשי המערכת
+        <span class="note">מנהל רואה את הדשבורד · מפקח רואה רק את אפליקציית השטח</span></h3>
+      <div class="body" style="overflow-x:auto"><table><thead><tr>
+        <th>שם</th><th>מזהה</th><th>מגזר</th><th>שם משתמש</th><th>סיסמה</th><th>תפקיד</th><th>פעיל</th><th></th>
+      </tr></thead><tbody>${U.map((u,i)=>`<tr>
+        <td>${esc(u.name)}</td>
+        <td class="num-cell">${esc(u.id)}</td>
+        <td>${u.gender==='M'?'בנים':u.gender==='F'?'בנות/גנים':'—'}</td>
+        <td><input class="form-input" style="padding:7px 10px;font-size:14px;min-width:130px"
+             id="u-name-${i}" value="${esc(u.username)}" placeholder="באנגלית"></td>
+        <td><input class="form-input" style="padding:7px 10px;font-size:14px;min-width:130px"
+             id="u-pass-${i}" type="password" placeholder="${u.has_password?'••••• מוגדרת':'לא הוגדרה'}"></td>
+        <td><select class="form-input" style="padding:7px 10px;font-size:14px" id="u-role-${i}">
+              <option value="inspector" ${u.role!=='admin'?'selected':''}>מפקח</option>
+              <option value="admin" ${u.role==='admin'?'selected':''}>מנהל</option>
+            </select></td>
+        <td><input type="checkbox" id="u-act-${i}" ${u.active?'checked':''} style="width:16px;height:16px;accent-color:var(--teal)"></td>
+        <td style="white-space:nowrap">
+          <button class="chip" onclick="saveUser(${i})">שמור</button>
+          <button class="chip" style="color:var(--danger);border-color:#fecaca"
+                  onclick="removeUser(${i})">הסר</button></td>
+      </tr>`).join('')}</tbody></table></div></div>
+    <div class="panel"><h3>הוספת מפקח</h3>
+      <div style="padding:14px 18px;display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+        <div><label class="field-label">שם מלא</label>
+          <input class="form-input" id="new-name" style="min-width:170px" placeholder="שם המפקח"></div>
+        <div><label class="field-label">מגזר</label>
+          <select class="form-input" id="new-gender" style="min-width:130px">
+            <option value="M">בנים</option><option value="F">בנות וגנים</option></select></div>
+        <div><label class="field-label">שם משתמש</label>
+          <input class="form-input" id="new-user" style="min-width:140px" placeholder="באנגלית"></div>
+        <div><label class="field-label">סיסמה</label>
+          <input class="form-input" id="new-pass" type="password" style="min-width:140px" placeholder="8 תווים לפחות"></div>
+        <div><label class="field-label">תפקיד</label>
+          <select class="form-input" id="new-role" style="min-width:110px">
+            <option value="inspector">מפקח</option><option value="admin">מנהל</option></select></div>
+        <button class="btn-primary" style="width:auto;padding:12px 26px;margin:0" onclick="addUser()">הוסף</button>
+      </div></div>
+
+    <div class="panel"><div style="padding:14px 18px;font-size:13.5px;color:var(--text-muted);line-height:1.7">
+      <b style="color:var(--navy)">איך זה עובד</b><br>
+      · שם משתמש: 3–20 תווים באנגלית, ספרות, נקודה או מקף. חייב להיות ייחודי.<br>
+      · סיסמה: 8 תווים לפחות. היא נשמרת מגובבת — גם אתה לא תוכל לראות אותה שוב.<br>
+      · השדה נשאר ריק אחרי שמירה. זה תקין. ״מוגדרת״ בכיתוב האפור אומר שקיימת סיסמה.<br>
+      · הסיסמאות נכנסות לתוקף רק כשמדליקים את האימות למעלה.<br>
+      · אי אפשר להדליק אימות לפני שלכל משתמש פעיל יש שם וסיסמה — כדי לא לנעול אף אחד בחוץ.<br>
+      · <b style="color:var(--navy)">הסרה:</b> מפקח שכבר ביצע בדיקות מושבת ולא נמחק, כדי שרשומות
+        הבקרה לא יישארו בלי מקור מזוהה. מי שטרם ביצע בדיקה נמחק לגמרי.<br>
+      · המגזר קובע לאילו מוסדות יישלח: בנים או בנות וגנים. אין דרך לעקוף אותו.
+    </div></div>`;
+}
+
+async function saveUser(i){
+  const u=W.users.users[i];
+  const payload={ action:'setuser', inspector_id:u.id,
+    username: $('#u-name-'+i).value.trim(),
+    role: $('#u-role-'+i).value,
+    active: $('#u-act-'+i).checked ? 'true' : 'false' };
+  const pw=$('#u-pass-'+i).value;
+  if(pw) payload.password=pw;
+  try{
+    const r=await apiPost(payload);
+    if(!r.ok) throw new Error(r.error);
+    await renderUsers();
+    flash('נשמר: '+u.name);
+  }catch(e){ flash('שגיאה: '+e.message, true); }
+}
+
+async function addUser(){
+  const name=$('#new-name').value.trim(), pw=$('#new-pass').value;
+  if(!name){ flash('חסר שם', true); return; }
+  if(pw && pw.length<8){ flash('סיסמה קצרה מדי — 8 תווים לפחות', true); return; }
+  try{
+    const r=await apiPost({action:'adduser', name:name, gender:$('#new-gender').value,
+      username:$('#new-user').value.trim(), password:pw, role:$('#new-role').value});
+    if(!r.ok) throw new Error(r.error);
+    await renderUsers();
+    flash('נוסף: '+name+' ('+r.data.id+')');
+  }catch(e){ flash('שגיאה: '+e.message, true); }
+}
+
+async function removeUser(i){
+  const u=W.users.users[i];
+  if(!confirm('להסיר את '+u.name+'?\n\nאם כבר ביצע בדיקות הוא יושבת ולא יימחק,\nכדי לשמור על תקינות הרשומות.')) return;
+  try{
+    const r=await apiPost({action:'deluser', inspector_id:u.id});
+    if(!r.ok) throw new Error(r.error);
+    await renderUsers();
+    flash(r.data.deleted ? (u.name+' נמחק') : (u.name+' הושבת'));
+  }catch(e){ flash('שגיאה: '+e.message, true); }
+}
+
+async function toggleAuth(on){
+  if(on && !confirm('להדליק אימות סיסמה?\n\nמרגע זה כל המפקחים יידרשו להזין שם משתמש וסיסמה.'))
+    return;
+  try{
+    const r=await apiPost({action:'setauth', value: on?'true':'false'});
+    if(!r.ok) throw new Error(r.error);
+    await renderUsers();
+    flash(on?'האימות הודלק':'האימות כובה');
+  }catch(e){ flash('שגיאה: '+e.message, true); }
+}
+
+function flash(msg, bad){
+  let el=$('#flash');
+  if(!el._init){ el._init=1; }
+  el.textContent=msg;
+  el.style.cssText='position:fixed;bottom:24px;right:50%;transform:translateX(50%);z-index:950;'+
+    'padding:12px 22px;border-radius:999px;font-size:14.5px;font-weight:600;color:#fff;'+
+    'box-shadow:var(--shadow-lg);background:'+(bad?'var(--danger)':'var(--success)');
+  clearTimeout(el._t); el._t=setTimeout(()=>{ el.style.display='none'; },3000);
+  el.style.display='block';
 }
 
 /* ═══ אתחול ═══ */
