@@ -387,7 +387,8 @@ textarea.form-input { min-height: 84px; resize: vertical; line-height: 1.5; }
       <div class="greet" id="greet-time">בוקר טוב</div>
       <div class="who" id="greet-name">—</div>
       <button class="btn-primary" onclick="requestAssignment()" id="btn-dispatch">קבל יעד</button>
-      <div class="hero-note">
+      <div id="dispatch-msg" class="empty-state" style="display:none;border:none;padding:16px 8px 4px"></div>
+      <div class="hero-note" id="hero-note">
         היעד נחשף רק כשהוא מוקצה, ושם הסייע נחשף רק לאחר אימות הגעה במקום.
         אין רשימה מראש ואין אפשרות לבחור יעד.
       </div>
@@ -414,8 +415,9 @@ textarea.form-input { min-height: 84px; resize: vertical; line-height: 1.5; }
       <div class="gps-box" id="gps-box">מאתר מיקום…</div>
     </div>
     <button class="btn-arrive" id="btn-arrive" onclick="confirmArrival()" disabled>הגעתי</button>
-    <div style="text-align:center;margin-top:14px">
+    <div style="text-align:center;margin-top:14px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
       <button class="header-btn" style="background:var(--surface);color:var(--text-muted);border:1.5px solid var(--border)" onclick="reportBlocked()">לא ניתן להגיע / סורבה כניסה</button>
+      <button class="header-btn" style="background:var(--surface);color:var(--text-muted);border:1.5px solid var(--border)" onclick="forfeitTarget()">ויתור על היעד</button>
     </div>
   </div>
 </section>
@@ -449,25 +451,25 @@ textarea.form-input { min-height: 84px; resize: vertical; line-height: 1.5; }
 
     <!-- Q2 -->
     <div class="q-block hidden" id="q2">
-      <div class="q-title">2. מה הסייע עושה בפועל</div>
-      <div class="q-help">הפעילות העיקרית בזמן התצפית. דווח מה ראית — המערכת קובעת אם זו חריגה.</div>
+      <div class="q-title">2. מצב התלמיד המשויך</div>
+      <div class="q-help strong">המידע חייב להגיע מיומן הכיתה או מהמחנכת. לא מהסייע.</div>
       <div class="opt-list" id="q2-opts"></div>
       <div class="sub-input hidden" id="q2-sub">
-        <input class="form-input" id="q2-text" placeholder="פרט את הפעילות">
+        <input class="form-input" id="q2-text" placeholder="שעת השחרור">
       </div>
     </div>
 
     <!-- Q3 -->
     <div class="q-block hidden" id="q3">
-      <div class="q-title">3. מצב התלמיד המשויך</div>
-      <div class="q-help strong">המידע חייב להגיע מיומן הכיתה או מהמחנכת. לא מהסייע.</div>
+      <div class="q-title">3. מה הסייע עושה בפועל</div>
+      <div class="q-help">הפעילות העיקרית בזמן התצפית. דווח מה ראית — המערכת קובעת אם זו חריגה.</div>
       <div class="opt-list" id="q3-opts"></div>
       <div id="contradiction" style="display:none;margin-top:10px;padding:10px 12px;border-radius:8px;
            background:var(--danger-light);color:#7f1d1d;font-size:13.5px;font-weight:500">
         סתירה בין התשובות. סייע לא יכול להיות צמוד לתלמיד שאינו בבית הספר.
       </div>
       <div class="sub-input hidden" id="q3-sub">
-        <input class="form-input" id="q3-text" placeholder="שעת השחרור">
+        <input class="form-input" id="q3-text" placeholder="פרט את הפעילות">
       </div>
     </div>
 
@@ -544,6 +546,11 @@ const STORAGE = {
    ok = תואם | partial = חלקי | flag = חריגה
    ═══════════════════════════════════════════════════════════ */
 const ACTIVITIES = [
+  /* ראשונה בכוונה. היא תשובה תואמת, ומיקום בתחתית הרשימה — אחרי
+     "מלמד כיתה" ו"לא בפעילות" — היה גורם למפקח להניח שהיא מפלילה.
+     מוצגת רק כשהתלמיד נעדר או שוחרר מוקדם. */
+  { id: 'reassigned',          label: 'התלמיד לא הגיע היום — הסייע/ת שובץ/ה לתפקיד אחר',
+    awayOnly: true },
   { id: 'with_student_class',  label: 'צמוד לתלמיד המשויך, בכיתה' },
   { id: 'with_student_out',    label: 'צמוד לתלמיד מחוץ לכיתה — הפסקה / טיפול / שירותים' },
   { id: 'nearby_available',    label: 'בקרבת התלמיד וזמין, לא בליווי פעיל' },
@@ -552,10 +559,7 @@ const ACTIVITIES = [
   { id: 'teaching',            label: 'מלמד כיתה / משמש כמורה' },
   { id: 'admin',               label: 'תפקיד מנהלי / מזכירות' },
   { id: 'idle',                label: 'לא בפעילות — חדר מורים / מסדרון' },
-  { id: 'other',               label: 'פעילות אחרת', needsText: true },
-  // מוצגת רק כשהתלמיד נעדר או שוחרר מוקדם — ראה renderActivities
-  { id: 'reassigned',          label: 'התלמיד לא הגיע היום, הסייעת שובצה מחדש',
-    awayOnly: true }
+  { id: 'other',               label: 'פעילות אחרת', needsText: true }
 ];
 
 const MATRIX = {
@@ -894,6 +898,12 @@ function fmtDur(ms) {
   return pad(Math.floor(s / 60)) + ':' + pad(s % 60);
 }
 function nowISO() { return new Date().toISOString(); }
+
+/* תאריך בשעון ירושלים. toISOString מחזיר UTC, ובשעות הערב
+   הוא כבר יום המחרת. */
+const IL_DATE_ = new Intl.DateTimeFormat('en-CA',
+  { timeZone: 'Asia/Jerusalem', year: 'numeric', month: '2-digit', day: '2-digit' });
+function ilDate_(d) { return IL_DATE_.format(d || new Date()); }
 function esc(s) { return String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 
 function haversine(lat1, lng1, lat2, lng2) {
@@ -1077,6 +1087,7 @@ function enterApp() {
   setText_('#greet-name', (state.inspector && state.inspector.name) || '');
   // סטטיסטיקות הן קישוט. כשל בהן לא ימנע כניסה שכבר אושרה בשרת.
   try { updateStats(); } catch (e) { console.warn('updateStats נכשל: ' + e.message); }
+  clearDispatchMsg();
   showScreen('home');
 }
 
@@ -1110,19 +1121,45 @@ function updateStats() {
 /* ═══════════════════════════════════════════════════════════
    DISPATCH
    ═══════════════════════════════════════════════════════════ */
+/** הודעה במכל הייעודי. אינה נוגעת בכפתור, בברכה או בהערה. */
+function showDispatchMsg(icon, title, detail, hint) {
+  const box = $('#dispatch-msg');
+  if (!box) return;
+  box.innerHTML =
+    '<div class="icon">' + icon + '</div>' +
+    '<div style="font-weight:600;color:var(--navy);font-size:17px">' + esc(title) + '</div>' +
+    '<div style="margin-top:6px">' + esc(detail) + '</div>' +
+    (hint ? '<div style="margin-top:10px;font-size:13px;color:var(--text-muted)">' + esc(hint) + '</div>' : '');
+  box.style.display = '';
+  const note = $('#hero-note'); if (note) note.style.display = 'none';
+}
+
+function clearDispatchMsg() {
+  const box = $('#dispatch-msg'); if (box) { box.innerHTML = ''; box.style.display = 'none'; }
+  const note = $('#hero-note'); if (note) note.style.display = '';
+}
+
 async function requestAssignment() {
   const btn = $('#btn-dispatch');
   btn.disabled = true; btn.textContent = 'משגר…';
   try {
     const inst = await getAssignment();
-    if (!inst) {
+    if (!inst || inst.none) {
       btn.disabled = false; btn.textContent = 'קבל יעד';
-      $('.hero-card').innerHTML =
-        '<div class="empty-state" style="border:none;padding:20px"><div class="icon">🏁</div>' +
-        '<div style="font-weight:600;color:var(--navy);font-size:17px">סיימת את היעדים להיום</div>' +
-        '<div style="margin-top:6px">' + state.checkedToday.length + ' בדיקות הושלמו</div></div>';
+      /* "סיימת" נאמר רק כשבאמת אין מה לבדוק. חסימה זמנית היא מצב
+         אחר, והמפקח צריך לדעת מתי היא נפתחת.
+         ההודעה נכתבת למכל ייעודי — דריסת .hero-card הייתה מוחקת
+         גם את הכפתור ואת הברכה, שיושבים בתוכו. */
+      const done = !inst || inst.reason === 'done';
+      const detail = (inst && inst.message) ? inst.message
+                   : state.checkedToday.length + ' בדיקות הושלמו';
+      showDispatchMsg(done ? '🏁' : '⏳',
+        done ? 'סיימת את היעדים להיום' : 'אין כרגע יעד פנוי',
+        detail,
+        done ? '' : 'נסה שוב מאוחר יותר, או פנה למנהל אם זה נמשך.');
       return;
     }
+    clearDispatchMsg();
     state.assignment = { institution: inst, dispatchTime: Date.now() };
     state.arrival = null;
     renderAssignment();
@@ -1239,6 +1276,34 @@ async function confirmArrival() {
   }
 }
 
+/**
+ * ויתור על יעד פתוח. משחרר את המוסד מיד לשאר המפקחים —
+ * מפקח שמגיע ומוצא בית ספר סגור לא צריך להיתקע שעתיים.
+ * הסיבה חובה, והוויתור נרשם: מי מוותר הרבה ייראה בדוח.
+ */
+async function forfeitTarget() {
+  if (!state.assignment) return;
+  const inst = state.assignment.institution;
+  const reason = prompt('מדוע אתה מוותר על ' + inst.name + '?\n' +
+                        '(למשל: בית הספר סגור, כתובת שגויה, אין גישה)');
+  if (reason === null) return;                     // ביטול
+  if (String(reason).trim().length < 4) {
+    toast('חובה לציין סיבה — לפחות 4 תווים', 'error');
+    return;
+  }
+  try {
+    const r = await apiPost({ action: 'forfeit',
+      assignment_id: inst.assignment_id, reason: String(reason).trim() });
+    if (!r.ok) throw new Error(r.error);
+    stopGps(); stopTimers();
+    state.assignment = null; state.arrival = null;
+    toast('ויתרת על ' + inst.name + '. המוסד שוחרר.', '');
+    showScreen('home');
+  } catch (e) {
+    toast('הוויתור נכשל: ' + e.message, 'error');
+  }
+}
+
 function reportBlocked() {
   if (!confirm('לדווח שלא ניתן להגיע או שסורבה כניסה?')) return;
   queueRecord({ type: 'access_blocked', verdict: 'flag' });
@@ -1270,8 +1335,8 @@ function renderCheck() {
 
   state.needsStudent = (s.needsStudent !== false) && s.type !== 'כיתתי';
   renderOpts('#q1-opts', PRESENCE, 'presence');
-  renderOpts('#q2-opts', ACTIVITIES.map(a => ({ ...a, tag: tagFor(a.id) })), 'activity');
-  renderOpts('#q3-opts', STUDENT, 'student');
+  renderOpts('#q2-opts', STUDENT, 'student');
+  renderOpts('#q3-opts', ACTIVITIES.map(a => ({ ...a, tag: tagFor(a.id) })), 'activity');
   renderOpts('#q4-opts', VERIFY, 'verify');
 
   ['q2','q3','q4','q5'].forEach(q => $('#' + q).classList.add('hidden'));
@@ -1325,10 +1390,12 @@ function onPresence(id, btn) {
   else { sub.classList.add('hidden'); $('#q1-text').value = ''; }
 
   // שאלת הפעילות רלוונטית רק אם נמצא
-  $('#q2').classList.toggle('hidden', id !== 'found');
+  // 2 = מצב התלמיד. נשאל תמיד כשיש תלמיד משויך, גם כשהסייע לא נמצא.
+  $('#q2').classList.toggle('hidden', !state.needsStudent);
   if (id !== 'found') { state.answers.activity = null; $$('[data-group="activity"]').forEach(b => b.classList.remove('selected','is-flag')); }
 
-  $('#q3').classList.toggle('hidden', !state.needsStudent);
+  // 3 = הפעילות. תלויה במצב התלמיד, ולכן נפתחת רק אחריו.
+  syncActivityGate();
   $('#q4').classList.remove('hidden');
   $('#q5').classList.remove('hidden');
 
@@ -1342,7 +1409,7 @@ function onActivity(id, btn) {
   const m = MATRIX[state.subject.type] || {};
   if (m[id] === 'flag') btn.classList.add('is-flag');
   const opt = ACTIVITIES.find(a => a.id === id);
-  $('#q2-sub').classList.toggle('hidden', !opt.needsText);
+  $('#q3-sub').classList.toggle('hidden', !opt.needsText);
   syncContradictions();
 }
 
@@ -1350,6 +1417,17 @@ function onActivity(id, btn) {
  * מונע סתירה לוגית: אי אפשר לדווח שהסייע צמוד לתלמיד
  * ובאותה נשימה שהתלמיד נעדר.
  */
+/**
+ * שאלה 3 (הפעילות) נפתחת רק אחרי שנענתה שאלה 2 (מצב התלמיד),
+ * או כשאין תלמיד משויך. הפעילות תלויה במצב התלמיד — "שובץ/ה מחדש"
+ * חוקית רק כשהתלמיד אינו בבית הספר — ולכן חייבת לבוא אחריו.
+ */
+function syncActivityGate() {
+  const a = state.answers;
+  const ready = a.presence === 'found' && (!state.needsStudent || !!a.student);
+  $('#q3').classList.toggle('hidden', !ready);
+}
+
 function syncContradictions() {
   const a = state.answers;
   const contact = CONTACT_ACTIVITIES.indexOf(a.activity) > -1;
@@ -1363,9 +1441,9 @@ function syncContradictions() {
   CONTACT_ACTIVITIES.forEach(id => setOptDisabled('activity', id, noStudent,
     'לא ניתן — דיווחת שהתלמיד אינו בבית הספר'));
 
-  // "שובצה מחדש" רלוונטית רק כשהתלמיד נעדר או שוחרר מוקדם
+  // "שובץ/ה מחדש" רלוונטית רק כשהתלמיד נעדר או שוחרר מוקדם
   setOptDisabled('activity', AWAY_ONLY_ACTIVITY, !STUDENT_AWAY.includes(a.student),
-    'רלוונטי רק כשהתלמיד נעדר או שוחרר מוקדם — ענה תחילה על שאלה 3');
+    'רלוונטי רק כשהתלמיד נעדר או שוחרר מוקדם');
 
   const warn = $('#contradiction');
   if (warn) warn.style.display = (contact && noStudent) ? 'block' : 'none';
@@ -1388,8 +1466,9 @@ function setOptDisabled(group, id, disabled, reason) {
 function onStudent(id, btn) {
   const opt = STUDENT.find(o => o.id === id);
   if (opt.flag) btn.classList.add('is-flag');
-  $('#q3-sub').classList.toggle('hidden', !opt.needsText);
-  if (opt.needsText) $('#q3-text').placeholder = opt.placeholder;
+  $('#q2-sub').classList.toggle('hidden', !opt.needsText);
+  if (opt.needsText) $('#q2-text').placeholder = opt.placeholder;
+  syncActivityGate();
   syncContradictions();
 }
 
@@ -1413,10 +1492,10 @@ function validate() {
     missing.push('סתירה בין שאלה 2 לשאלה 3');
 
   if (a.activity === AWAY_ONLY_ACTIVITY && !STUDENT_AWAY.includes(a.student))
-    missing.push('״שובצה מחדש״ אפשרי רק כשהתלמיד נעדר או שוחרר מוקדם');
+    missing.push('״שובץ/ה מחדש״ אפשרי רק כשהתלמיד נעדר או שוחרר מוקדם');
 
   // שדות טקסט חובה
-  const needsText = { presence:'#q1-text', activity:'#q2-text', student:'#q3-text' };
+  const needsText = { presence:'#q1-text', student:'#q2-text', activity:'#q3-text' };
   for (const [g, selr] of Object.entries(needsText)) {
     const src = g === 'presence' ? PRESENCE : g === 'activity' ? ACTIVITIES : STUDENT;
     const o = src.find(x => x.id === a[g]);
@@ -1509,7 +1588,9 @@ async function queueRecord(meta) {
     assignment_id:      i?.assignment_id || '',
     inspector_id:       state.inspector.id,
     inspector_name:     state.inspector.name,
-    date:               new Date().toISOString().slice(0, 10),
+    // תאריך מקומי. השרת גוזר את התאריך הקובע מזמן ההגעה ומתעלם מזה,
+    // אבל ערך ב-UTC כאן היה מטעה בקריאת התור המקומי.
+    date:               ilDate_(new Date()),
     dispatch_time:      state.assignment ? new Date(state.assignment.dispatchTime).toISOString() : '',
     institution_id:     i?.id || '',
     institution_symbol: i?.symbol || '',
@@ -1531,9 +1612,9 @@ async function queueRecord(meta) {
     presence:           a.presence || '',
     presence_text:      $('#q1-text')?.value.trim() || '',
     activity:           a.activity || '',
-    activity_text:      $('#q2-text')?.value.trim() || '',
+    activity_text:      $('#q3-text')?.value.trim() || '',
     student_status:     a.student || '',
-    student_text:       $('#q3-text')?.value.trim() || '',
+    student_text:       $('#q2-text')?.value.trim() || '',
     verified_by:        a.verify || '',
     verified_name:      $('#q4-text')?.value.trim() || '',
     notes:              $('#q5-text')?.value.trim() || '',
@@ -1671,11 +1752,9 @@ function endDay() {
   stopTimers(); stopGps();
   state.assignment = null;
   updateStats();
-  $('.hero-card').innerHTML =
-    '<div class="empty-state" style="border:none;padding:20px"><div class="icon">🏁</div>' +
-    '<div style="font-weight:600;color:var(--navy);font-size:17px">יום העבודה נסגר</div>' +
-    '<div style="margin-top:6px">' + state.checkedToday.length + ' בדיקות · ' +
-    state.checkedToday.filter(c => c.verdict === 'flag').length + ' חריגות</div></div>';
+  showDispatchMsg('🏁', 'יום העבודה נסגר',
+    state.checkedToday.length + ' בדיקות · ' +
+    state.checkedToday.filter(c => c.verdict === 'flag').length + ' חריגות', '');
   showScreen('home');
 }
 

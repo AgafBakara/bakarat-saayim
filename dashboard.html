@@ -185,10 +185,6 @@ tr.clickable td:first-child::after{content:'‹';color:var(--text-muted);margin-
       <div class="login-icon">◆</div>
       <div class="login-title">דשבורד הנהלה</div>
       <div class="login-sub" id="login-sub">עיריית בני ברק · אגף בקרה</div>
-      <div id="mode-pick" style="display:none">
-        <label class="field-label" for="sel-admin">בחר משתמש</label>
-        <select class="form-input" id="sel-admin"><option value="">טוען…</option></select>
-      </div>
       <div id="mode-pass" style="display:none">
         <label class="field-label" for="u">שם משתמש</label>
         <input class="form-input" id="u" autocapitalize="off" spellcheck="false">
@@ -272,10 +268,14 @@ function fmtHM(sec){
   const h=Math.floor(sec/3600), m=Math.round(sec%3600/60);
   return h ? h+'ש '+String(m).padStart(2,'0')+'ד' : m+'ד';
 }
+/* השעות הן ראיה. הן חייבות להיות שעון ירושלים גם כשהדשבורד
+   נפתח ממכשיר שאזור הזמן שלו אחר. */
+const IL_TIME_ = new Intl.DateTimeFormat('en-GB',
+  { timeZone:'Asia/Jerusalem', hour:'2-digit', minute:'2-digit', hour12:false });
 function clock(v){
   if(!v) return '—';
   const d = (v instanceof Date) ? v : new Date(v);
-  return isNaN(d) ? '—' : String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+  return isNaN(d) ? '—' : IL_TIME_.format(d);
 }
 
 const ACT_LABEL = {
@@ -305,22 +305,10 @@ async function apiGet(action, params={}){
 }
 
 /* ═══ התחברות ═══ */
-const ADMINS=[];
 
 async function doLogin(){
   const err=$('#err'), btn=$('#btn-login');
   err.style.display='none';
-
-  // מסלול ללא סיסמה — בחירה מרשימה
-  if($('#mode-pick').style.display!=='none'){
-    const id=$('#sel-admin').value;
-    const who=ADMINS.find(i=>i.id===id);
-    if(!who){ err.textContent='בחר משתמש מהרשימה'; err.style.display='block'; return; }
-    state.token=null; state.name=who.name; state.inspectorId=who.id; state.role=who.role;
-    sessionStorage.setItem('bakaraDash', JSON.stringify({t:null,n:who.name,i:who.id,r:who.role}));
-    enter();
-    return;
-  }
 
   btn.disabled=true; btn.textContent='בודק סיסמה… (עד 5 שניות)';
   try{
@@ -373,8 +361,15 @@ async function load(){
     const bits=[];
     if(T.hidden_tests) bits.push(T.hidden_tests+' רשומות בדיקה מוסתרות');
     if(!T.auth_on)     bits.push('⚠ אימות סיסמה כבוי');
+    /* התאמת מזהי נוכחות. כשל נרמול נראה כמו "אף אחד לא החתים",
+       ולכן הוא חייב לצעוק כאן ולא רק בדוח ההצלבה. */
+    const idBad = T.id_match_pct !== null && T.id_match_pct !== undefined &&
+                  T.id_match_pct < (T.id_match_min || 50);
+    if(idBad) bits.push('⚠ התאמת מזהי נוכחות: ' + T.id_match_pct + '%' +
+      (T.id_match_counts ? ' (' + T.id_match_counts + ')' : '') + ' — בדוק את עמודת ת"ז');
     $('#hidden-note').innerHTML = bits.join(' · ');
-    $('#hidden-note').style.color = (!T.auth_on) ? 'var(--danger)' : '';
+    $('#hidden-note').style.color = (!T.auth_on || idBad) ? 'var(--danger)' : '';
+    $('#hidden-note').style.fontWeight = idBad ? '700' : '';
     render();
   }catch(e){
     $('#content').innerHTML='<div class="panel"><div class="empty"><div class="ic">⚠</div>'+esc(e.message)+'</div></div>';
@@ -1351,7 +1346,10 @@ function flash(msg, bad){
 async function boot(){
   try{
     const sv=JSON.parse(sessionStorage.getItem('bakaraDash')||'null');
-    if(sv&&(sv.t||sv.i)){ state.token=sv.t; state.name=sv.n; state.inspectorId=sv.i||null; state.role=sv.r||'admin'; return enter(); }
+    // סשן שנשמר בלי טוקן שייך לבורר הישן — אינו תקף יותר
+    if(sv&&sv.t){ state.token=sv.t; state.name=sv.n; state.inspectorId=sv.i||null;
+                  state.role=sv.r||'admin'; return enter(); }
+    if(sv) sessionStorage.removeItem('bakaraDash');
   }catch(e){}
 
   const btn=$('#btn-login'), err=$('#err');
@@ -1371,50 +1369,22 @@ async function boot(){
     return;
   }
 
-  if(authOn){
-    $('#mode-pass').style.display='';
-    btn.disabled=false;
-    const saved=localStorage.getItem('bakaraDashUser');
-    if(saved){ $('#u').value=saved; $('#chk-remember').checked=true; $('#p').focus(); }
-    else $('#u').focus();
-    return;
+  /* הדשבורד עובר במסך סיסמה בשני המצבים.
+     כשהאימות כבוי, auth_ במסלול ללא-טוקן סמך על מזהה שהלקוח שולח,
+     ובורר שהציג מזהי מנהלים סיפק את החצי השני של צירוף ההתחזות.
+     פעולות ההנהלה מחייבות טוקן תמיד, ולכן אין יותר בורר. */
+  $('#mode-pass').style.display='';
+  btn.disabled=false;
+  if(!authOn){
+    $('#login-sub').innerHTML='הנהלה בלבד · ' +
+      '<span style="color:var(--gold-dark);font-weight:600">אימות הסיסמה כבוי למפקחי שטח, ' +
+      'אך הדשבורד מחייב סיסמה תמיד</span>';
   }
-
-  // אימות כבוי — הרשימה עדיין נדרשת
-  try{
-    const r=await apiGet('inspectors',{scope:'dashboard'});
-    if(r.ok && r.data && r.data.length){
-      // מפקחי שטח אינם מורשים לדשבורד — רק admin ו-viewer
-      const admins=r.data.filter(i=>i.role==='admin'||i.role==='viewer');
-      if(!admins.length){
-        $('#mode-pick').style.display='';
-        $('#sel-admin').innerHTML='<option value="">—</option>';
-        $('#err').innerHTML='לא הוגדר משתמש הנהלה.<br>'+
-          '<span style="font-weight:400">בגיליון ״מפקחים״, בעמודה role, כתוב admin או viewer בשורה שלך.</span>';
-        $('#err').style.display='block';
-        return;
-      }
-      const sel=$('#sel-admin');
-      sel.innerHTML='<option value="">בחר מהרשימה...</option>';
-      ADMINS.length=0;
-      admins.forEach(i=>{ ADMINS.push(i);
-        const o=document.createElement('option');
-        o.value=i.id;
-        o.textContent=i.name + (i.role==='viewer' ? ' (צפייה בלבד)' : '');
-        sel.appendChild(o); });
-      $('#mode-pick').style.display='';
-      $('#login-sub').innerHTML='הנהלה בלבד · <span style="color:var(--gold-dark);font-weight:600">אימות סיסמה כבוי</span>';
-      btn.disabled=false;
-      return;
-    }
-    throw new Error(r.error||'לא הוחזרו משתמשים');
-  }catch(e){
-    err.innerHTML='לא ניתן לטעון את רשימת המשתמשים.<br>'+
-      '<span style="font-weight:400">'+esc(e.message)+'</span>';
-    err.style.display='block';
-    btn.disabled=true;
-  }
+  const saved=localStorage.getItem('bakaraDashUser');
+  if(saved){ $('#u').value=saved; $('#chk-remember').checked=true; $('#p').focus(); }
+  else $('#u').focus();
 }
+
 boot();
 </script>
 </body>
