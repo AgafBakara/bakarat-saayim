@@ -369,7 +369,7 @@ textarea.form-input { min-height: 84px; resize: vertical; line-height: 1.5; }
       <div id="login-err" style="display:none;margin-top:12px;padding:10px 12px;border-radius:8px;
            background:var(--danger-light);color:#7f1d1d;font-size:14px;font-weight:500"></div>
       <button class="btn-primary" id="btn-login" onclick="doLogin()">כניסה</button>
-      <div class="login-footer">גרסה 2.0</div>
+      <div class="login-footer">גרסה <span id="build-stamp">2.0</span></div>
     </div>
   </div>
 </section>
@@ -523,7 +523,7 @@ const CONFIG = {
   API_URL: 'https://script.google.com/macros/s/AKfycby_m54KMPtMeNNlikGUYpCPTRRgWMDQy-3EfsVF0CkwIvmlIk1PaQljq1lJwDmYYk3J/exec',
   DEMO_MODE: false,
   ACCESS_KEY: 'bb2026-K7fQm3xR9wLpZ4nT',               // ← העתק מגיליון ההגדרות
-  VERSION: '2.0',
+  VERSION: '2.1-B',           // מוצגת במסך הכניסה — לזיהוי הקובץ שהועלה בפועל
   CACHE_PREFIX: 'sayaControl_v1_',
   GEOFENCE_METERS: 75,          // רדיוס אישור הגעה
   GPS_MIN_ACCURACY: 30,         // דיוק גרוע מזה = חסימה
@@ -797,13 +797,19 @@ async function getAssignment() {
 /* ── חשיפת סייע ────────────────────────────────────────── */
 async function revealSubject(instId) {
   if (!CONFIG.DEMO_MODE) {
+    // מדידה חדשה בכל חשיפה, גם בבדיקה השנייה והשלישית באותו מוסד
+    const fix = await freshPosition_(0);
+    state.arrival = Object.assign(state.arrival || {}, {
+      lat: fix.lat, lng: fix.lng, accuracy: fix.accuracy, t: fix.t
+    });
     const r = await apiPost({
       action: 'reveal',
       inspector:     state.inspector.id,
       assignment_id: state.assignment.institution.assignment_id,
-      lat:           state.arrival.lat,
-      lng:           state.arrival.lng,
-      accuracy:      state.arrival.accuracy
+      lat:           fix.lat,
+      lng:           fix.lng,
+      accuracy:      fix.accuracy,
+      gps_time:      fix.t
     });
     if (!r.ok) throw new Error(r.error);
     return r.data;
@@ -812,6 +818,27 @@ async function revealSubject(instId) {
   const pool = DEMO.roster.filter(r => r.inst === instId && !done.includes(r.aid));
   if (!pool.length) return null;
   return pool[Math.floor(Math.random() * pool.length)];
+}
+
+/**
+ * מדידת מיקום טרייה, לפני כל חשיפה.
+ * בלי זה אימות המיקום חל על החשיפה הראשונה בלבד — המפקח מאשר הגעה
+ * בשער, יוצא, וממשיך לדווח מאותם קואורדינטות שמורות בלי לדעת
+ * שהמערכת אינה מודדת שוב.
+ */
+function freshPosition_(maxAgeMs) {
+  return new Promise((res, rej) => {
+    if (!navigator.geolocation) return rej(new Error('המכשיר אינו תומך במיקום'));
+    navigator.geolocation.getCurrentPosition(
+      p => res({ lat: p.coords.latitude, lng: p.coords.longitude,
+                 accuracy: Math.round(p.coords.accuracy),
+                 t: p.timestamp || Date.now() }),
+      err => rej(new Error(err.code === 1
+        ? 'הרשאת מיקום חסומה — יש לאשר בהגדרות'
+        : 'לא ניתן לאתר מיקום. המתן רגע ונסה שוב.')),
+      { enableHighAccuracy: true, timeout: CONFIG.GPS_TIMEOUT_MS, maximumAge: maxAgeMs || 0 }
+    );
+  });
 }
 
 /* מיקום נוכחי, לצורך שיגור ליעד קרוב. לא חוסם אם נכשל. */
@@ -830,6 +857,18 @@ function currentPosition_() {
    UI HELPERS
    ═══════════════════════════════════════════════════════════ */
 const $  = s => document.querySelector(s);
+
+/**
+ * כתיבת טקסט לאלמנט שאינו קריטי.
+ * אלמנט חסר מדווח בשמו לקונסולה ואינו מפיל את הפעולה: ברכה או
+ * מונה סטטיסטיקה לא אמורים למנוע התחברות שכבר הצליחה בשרת.
+ */
+function setText_(sel, val) {
+  const el = document.querySelector(sel);
+  if (!el) { console.warn('אלמנט חסר בממשק: ' + sel); return false; }
+  el.textContent = val;
+  return true;
+}
 const $$ = s => [...document.querySelectorAll(s)];
 
 function showScreen(n) {
@@ -1005,11 +1044,17 @@ async function doLoginPassword(err) {
 
     enterApp();
   } catch (e) {
-    err.textContent = e.message || 'ההתחברות נכשלה';
+    /* שגיאת שרת מוצגת כלשונה. תקלה בממשק מסומנת ככזו, כדי שלא
+       תיראה כאילו השרת דחה את הסיסמה. */
+    const uiBug = /Cannot (set|read) propert/i.test(e.message || '');
+    err.textContent = uiBug
+      ? 'תקלה בממשק (' + e.message + '). ההתחברות עצמה ייתכן שהצליחה — רענן את הדף.'
+      : (e.message || 'ההתחברות נכשלה');
     err.style.display = 'block';
+    if (uiBug) console.error('תקלת ממשק בהתחברות:', e);
   } finally {
     btn.disabled = false; btn.textContent = 'כניסה';
-    $('#in-pass').value = '';           // הסיסמה לא נשארת בשדה
+    const pf = $('#in-pass'); if (pf) pf.value = '';   // הסיסמה לא נשארת בשדה
   }
 }
 
@@ -1025,11 +1070,13 @@ function doLoginPick(err) {
 }
 
 function enterApp() {
-  $('#btn-logout').style.display = '';
+  const lo = $('#btn-logout');
+  if (lo) lo.style.display = '';
   const h = new Date().getHours();
-  $('#greet-time').textContent = h < 12 ? 'בוקר טוב' : h < 17 ? 'צהריים טובים' : 'ערב טוב';
-  $('#greet-name').textContent = state.inspector.name;
-  updateStats();
+  setText_('#greet-time', h < 12 ? 'בוקר טוב' : h < 17 ? 'צהריים טובים' : 'ערב טוב');
+  setText_('#greet-name', (state.inspector && state.inspector.name) || '');
+  // סטטיסטיקות הן קישוט. כשל בהן לא ימנע כניסה שכבר אושרה בשרת.
+  try { updateStats(); } catch (e) { console.warn('updateStats נכשל: ' + e.message); }
   showScreen('home');
 }
 
@@ -1050,14 +1097,14 @@ async function logout() {
    STATS
    ═══════════════════════════════════════════════════════════ */
 function updateStats() {
-  const done = state.checkedToday;
-  $('#st-target').textContent = state.visitedInst.length;
-  $('#st-done').textContent   = done.length;
-  $('#st-flag').textContent   = done.filter(c => c.verdict === 'flag').length;
+  const done = state.checkedToday || [];
+  setText_('#st-target', (state.visitedInst || []).length);
+  setText_('#st-done',   done.length);
+  setText_('#st-flag',   done.filter(c => c.verdict === 'flag').length);
   if (done.length) {
     const avg = done.reduce((s, c) => s + c.secondsReveal, 0) / done.length;
-    $('#st-avg').textContent = fmtDur(avg * 1000);
-  } else $('#st-avg').textContent = '—';
+    setText_('#st-avg', fmtDur(avg * 1000));
+  } else setText_('#st-avg', '—');
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -1116,7 +1163,9 @@ function startGps() {
   if (!navigator.geolocation) { renderGps(null, 'המכשיר אינו תומך במיקום'); return; }
   gpsWatch = navigator.geolocation.watchPosition(
     p => {
-      state.gps = { lat: p.coords.latitude, lng: p.coords.longitude, accuracy: Math.round(p.coords.accuracy) };
+      state.gps = { lat: p.coords.latitude, lng: p.coords.longitude,
+                    accuracy: Math.round(p.coords.accuracy),
+                    t: p.timestamp || Date.now() };   // גיל המדידה, לאימות בשרת
       renderGps(state.gps);
     },
     err => renderGps(null, err.code === 1 ? 'הרשאת מיקום חסומה — יש לאשר בהגדרות' : 'לא ניתן לאתר מיקום'),
@@ -1161,7 +1210,8 @@ async function confirmArrival() {
   state.arrival = {
     time: Date.now(), iso: nowISO(),
     lat: state.gps.lat, lng: state.gps.lng,
-    accuracy: state.gps.accuracy, distance: dist
+    accuracy: state.gps.accuracy, distance: dist,
+    t: state.gps.t || Date.now()
   };
 
   const btn = $('#btn-arrive');
@@ -1598,8 +1648,17 @@ function showNext(subject, verdict) {
 }
 
 async function nextInSameInstitution() {
-  const subj = await revealSubject(state.assignment.institution.id);
+  // המדידה נעשית מחדש, ולכן ייתכן עיכוב של שנייה-שתיים
+  toast('מודד מיקום…', '');
+  let subj;
+  try {
+    subj = await revealSubject(state.assignment.institution.id);
+  } catch (e) {
+    toast(e.message, 'error');
+    return;
+  }
   if (!subj) { toast('אין סייעים נוספים', ''); finishInstitution(); return; }
+  if (subj.reissued) toast('זהו הסייע שכבר נחשף לך. יש לסגור עליו דיווח.', '');
   state.subject = subj;
   state.revealTime = Date.now();
   state.answers = {};
@@ -1646,6 +1705,7 @@ window.addEventListener('online',  () => { state.online = true;  updateSyncPill(
 window.addEventListener('offline', () => { state.online = false; updateSyncPill(); });
 
 (async function boot() {
+  setText_('#build-stamp', CONFIG.VERSION);
   try { await openDB(); state.queue = await dbAll(); } catch (e) { console.error(e); }
   updateSyncPill();
   await setupLogin();

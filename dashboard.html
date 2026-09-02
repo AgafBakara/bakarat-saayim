@@ -390,6 +390,26 @@ function openModal(title, sub, kpis, html){
   $('#modal-body').innerHTML=html;
   $('#modal-bg').classList.add('show');
 }
+/* ממצא 11: הערך נקרא מ-dataset ולא מוזרק לתוך מחרוזת JS בתוך HTML.
+   esc() ממיר גרש ל-&#39;, ומפענח ה-HTML היה מחזיר אותו לגרש לפני
+   שה-JS נקרא — כך ששם עם גרש שבר את השורה, ושם זדוני הריץ קוד. */
+document.addEventListener('click', e => {
+  const tr = e.target.closest('[data-drill]');
+  if (!tr) return;
+  const v = tr.dataset.v || '';
+  switch (tr.dataset.drill) {
+    case 'count':      return drillCount(tr.dataset.k, v, tr.dataset.inst === 'true');
+    case 'instRoster': return drillInstRoster(v);
+    case 'inspector':  return drillInspector(v);
+    case 'institution':return drillInstitution(v);
+    case 'activity':   return drillActivity(v);
+    case 'type':       return drillType(v);
+    case 'month':      return drillMonth(v);
+    case 'assistant':  return drillAssistant(v);
+    case 'inspDays':   return drillInspDays(v);
+  }
+});
+
 function closeModal(){ $('#modal-bg').classList.remove('show'); }
 document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeModal(); });
 
@@ -520,7 +540,7 @@ function countPanel(key, arr, title, note){
   const isInst = arr===W.instAll;
   return `<div class="panel"><h3>${title}${note?' <span class="note">'+note+'</span>':''}</h3>
     <div class="body" style="max-height:340px;overflow-y:auto"><table><tbody>${rows.map(r=>`<tr class="clickable"
-      onclick="drillCount('${key}','${esc(r.k).replace(/'/g,'&#39;')}',${isInst})">
+      data-drill="count" data-k="${esc(key)}" data-v="${esc(r.k)}" data-inst="${isInst}">
       <td style="width:38%">${esc(r.k)}</td>
       <td class="num-cell" style="width:44px">${r.n}</td>
       <td class="num-cell" style="width:46px;color:var(--text-muted);font-size:12px">${pct(r.n,tot)}%</td>
@@ -562,7 +582,7 @@ function instRosterPanel(I,R){
       <span class="note">לחץ על שורה לרשימת הסייעים · מוסד בלי סייעים לא ייכנס להגרלה</span></h3>
     <div class="body" style="overflow-x:auto"><table><thead><tr>
       <th>מוסד</th><th>מגזר</th><th>סוג</th><th>שיבוצים</th><th>פירוט</th><th>מיקום</th>
-    </tr></thead><tbody>${rows.map(r=>`<tr class="clickable" onclick="drillInstRoster('${esc(r.name).replace(/'/g,'&#39;')}')">
+    </tr></thead><tbody>${rows.map(r=>`<tr class="clickable" data-drill="instRoster" data-v="${esc(r.name)}">
       <td>${esc(r.name)}</td><td style="white-space:nowrap">${r.kind}</td>
       <td style="white-space:nowrap">${esc(r.type)}</td>
       <td class="num-cell" style="color:${r.n?'inherit':'var(--danger)'}">${r.n}</td>
@@ -626,7 +646,7 @@ function inspectorPanel(C){
       <span class="note">״בדיקות״ = סייעים שנבדקו · 0% חריגות חשוד לא פחות משיעור גבוה</span></h3>
     <div class="body"><table><thead><tr>
       <th>מפקח</th><th>ימים</th><th>ביקורים</th><th>בדיקות</th><th>ליום</th><th>% חריגות</th><th>זמן דיווח</th>
-    </tr></thead><tbody>${rows.map(r=>`<tr class="clickable" onclick="drillInspector('${esc(r.name).replace(/'/g,'&#39;')}')">
+    </tr></thead><tbody>${rows.map(r=>`<tr class="clickable" data-drill="inspector" data-v="${esc(r.name)}">
       <td>${esc(r.name)}${roleTag(r.name)}</td><td class="num-cell">${r.days}</td><td class="num-cell">${r.visits}</td>
       <td class="num-cell">${r.n}</td><td class="num-cell">${r.perDay}</td>
       <td class="num-cell" style="color:${r.flagRate>25?'var(--danger)':r.flagRate===0?'var(--gold-dark)':'inherit'}">${r.flagRate}%</td>
@@ -655,7 +675,7 @@ function institutionResultPanel(C,I){
       <span class="note">${never} טרם נבדקו · ״ריכוז ממצאים״ = ${RULES.CONC_ABS}+ חריגות וגם ${RULES.CONC_RATE}%+, ורק מ-${RULES.MIN_CHECKS} בדיקות</span></h3>
     <div class="body" style="max-height:420px;overflow-y:auto"><table><thead><tr>
       <th>מוסד</th><th>בדיקות</th><th>חריגות</th><th style="width:96px">שיעור</th><th>סטטוס</th>
-    </tr></thead><tbody>${rows.map(r=>`<tr class="clickable" onclick="drillInstitution('${esc(r.name).replace(/'/g,'&#39;')}')">
+    </tr></thead><tbody>${rows.map(r=>`<tr class="clickable" data-drill="institution" data-v="${esc(r.name)}">
       <td>${esc(r.name)}</td><td class="num-cell">${r.n}</td><td class="num-cell">${r.f}</td>
       <td><div style="display:flex;align-items:center;gap:8px">
         <div class="bar ${r.rate?'risk':''}"><span style="width:${r.rate}%"></span></div>
@@ -673,7 +693,7 @@ function activityPanel(C){
     .map(k=>({k,label:ACT_LABEL[k]||k,n:g[k].length})).sort((a,b)=>b.n-a.n);
   const max=Math.max(...rows.map(r=>r.n),1);
   return `<div class="panel"><h3>מה הסייעים עושים בפועל <span class="note">לחץ לרשימת הבדיקות</span></h3>
-    <div class="body"><table><tbody>${rows.map(r=>`<tr class="clickable" onclick="drillActivity('${r.k}')">
+    <div class="body"><table><tbody>${rows.map(r=>`<tr class="clickable" data-drill="activity" data-v="${esc(r.k)}">
       <td style="width:50%">${esc(r.label)}</td>
       <td class="num-cell" style="width:44px">${r.n}</td>
       <td class="num-cell" style="width:44px;color:var(--text-muted);font-size:12px">${pct(r.n,C.length)}%</td>
@@ -694,7 +714,7 @@ function typePanel(C){
   return `<div class="panel"><h3>לפי סוג סייע <span class="note">איפה מרוכזת הבעיה</span></h3>
     <div class="body"><table><thead><tr>
       <th>סוג</th><th>בדיקות</th><th>לא נמצא</th><th>חריגות</th><th>שיעור</th>
-    </tr></thead><tbody>${rows.map(r=>`<tr class="clickable" onclick="drillType('${esc(r.k).replace(/'/g,'&#39;')}')">
+    </tr></thead><tbody>${rows.map(r=>`<tr class="clickable" data-drill="type" data-v="${esc(r.k)}">
       <td>${esc(r.k)}</td><td class="num-cell">${r.n}</td><td class="num-cell">${r.nf}</td>
       <td class="num-cell">${r.f}</td><td class="num-cell">${r.rate}%</td>
     </tr>`).join('')}</tbody></table></div></div>`;
@@ -723,7 +743,7 @@ function trendPanel(C){
       <span class="note" style="color:${dir.c};font-weight:600">${dir.t} מתחילת התקופה</span></h3>
     <div class="body"><table><thead><tr>
       <th>חודש</th><th>בדיקות</th><th>חריגות</th><th style="width:44%">שיעור</th>
-    </tr></thead><tbody>${rows.map(r=>`<tr class="clickable" onclick="drillMonth('${r.m}')">
+    </tr></thead><tbody>${rows.map(r=>`<tr class="clickable" data-drill="month" data-v="${esc(r.m)}">
       <td class="num-cell">${r.m}</td><td class="num-cell">${r.n}</td><td class="num-cell">${r.f}</td>
       <td><div style="display:flex;align-items:center;gap:8px">
         <div class="bar ${r.rate?'risk':''}"><span style="width:${r.rate/max*100}%"></span></div>
@@ -761,7 +781,7 @@ function recheckPanel(C){
       <span class="note">${fixed} תוקנו · ${again} חזרו · ${none} טרם נבדקו שוב</span></h3>
     <div class="body" style="max-height:400px;overflow:auto"><table><thead><tr>
       <th>סייע</th><th>מוסד</th><th>הממצא</th><th>נבדק שוב</th><th>אחרי</th><th>תוצאה</th>
-    </tr></thead><tbody>${rows.slice(0,60).map(r=>`<tr class="clickable" onclick="drillAssistant('${esc(r.name).replace(/'/g,'&#39;')}')">
+    </tr></thead><tbody>${rows.slice(0,60).map(r=>`<tr class="clickable" data-drill="assistant" data-v="${esc(r.name)}">
       <td>${esc(r.name)}</td><td>${esc(r.inst)}</td><td class="num-cell">${r.date}</td>
       <td class="num-cell">${r.next||'—'}</td>
       <td class="num-cell">${r.days!=null?r.days+' ימים':'—'}</td><td>${st(r)}</td>
@@ -795,7 +815,7 @@ function assistantPanel(C){
       <span class="note">${rep} עם יותר מחריגה אחת — אלה שדורשים טיפול, לא מקרה חד-פעמי</span></h3>
     <div class="body" style="max-height:440px;overflow:auto"><table><thead><tr>
       <th>שם הסייע</th><th>סוג</th><th>מוסד</th><th>בדיקות</th><th>לא נמצא</th><th>חריגות</th>
-    </tr></thead><tbody>${rows.map(r=>`<tr class="clickable" onclick="drillAssistant('${esc(r.name).replace(/'/g,'&#39;')}')">
+    </tr></thead><tbody>${rows.map(r=>`<tr class="clickable" data-drill="assistant" data-v="${esc(r.name)}">
       <td>${esc(r.name)}</td><td>${esc(r.atype)}</td><td>${esc(r.inst)}</td>
       <td class="num-cell">${r.n}</td><td class="num-cell">${r.nf}</td>
       <td class="num-cell" style="color:${r.f>=2?'var(--danger)':'inherit'}">${r.f}</td>
@@ -885,7 +905,7 @@ function renderTime(){
     <div class="body" style="overflow-x:auto"><table><thead><tr>
       <th>מפקח</th><th>ימים</th><th>ביקורים</th><th>בדיקות</th><th>אורך יום</th>
       <th>שהייה במוסד</th><th>נסיעה בין מוסדות</th><th>לא מוסבר ליום</th><th>ניצול</th>
-    </tr></thead><tbody>${rows.map(r=>`<tr class="clickable" onclick="drillInspDays('${esc(r.name).replace(/'/g,'&#39;')}')">
+    </tr></thead><tbody>${rows.map(r=>`<tr class="clickable" data-drill="inspDays" data-v="${esc(r.name)}">
       <td>${esc(r.name)}${roleTag(r.name)}</td><td class="num-cell">${r.days}</td>
       <td class="num-cell">${r.visits}</td><td class="num-cell">${r.checks}</td>
       <td class="num-cell">${fmtHM(r.avgSpan)}</td>
