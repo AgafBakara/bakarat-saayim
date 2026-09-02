@@ -33,6 +33,32 @@ input{font-family:inherit;font-size:inherit}
 .container{max-width:1300px;margin:0 auto;padding:20px 24px 60px}
 
 .screen{display:none}.screen.active{display:block}
+.warn-strip{padding:10px 13px;border-radius:var(--radius-sm);
+  background:var(--gold-light);color:var(--gold-dark);font-weight:600}
+.cfg-group{margin:22px 0 10px;padding-bottom:7px;border-bottom:2px solid var(--border);
+  font-size:15px;font-weight:700;color:var(--navy)}
+.cfg-group:first-child{margin-top:4px}
+.cfg-row{display:flex;gap:16px;align-items:flex-start;padding:12px 0;
+  border-bottom:1px solid var(--border)}
+.cfg-row.is-warn{background:var(--gold-light);margin:0 -16px;padding:12px 16px}
+.cfg-main{flex:1;min-width:0}
+.cfg-label{font-weight:600;color:var(--navy);margin-bottom:3px}
+.cfg-help{color:var(--text-muted);font-size:13px;line-height:1.65}
+.cfg-range{color:var(--text-muted);font-size:12px;margin-top:4px;opacity:.8}
+.cfg-edit{display:flex;align-items:center;gap:7px;flex-shrink:0}
+.cfg-input{width:96px;padding:7px 10px;border:1.5px solid var(--border);
+  border-radius:var(--radius-sm);text-align:center;font-size:15px;font-family:inherit}
+.cfg-input:focus{outline:none;border-color:var(--teal)}
+.cfg-save{padding:7px 13px;border:0;border-radius:var(--radius-sm);background:var(--navy);
+  color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit}
+.cfg-save:disabled{opacity:.5;cursor:default}
+.cfg-unit{color:var(--text-muted);font-size:12px;min-width:52px}
+.cfg-ro{color:var(--text-muted);font-size:15px;padding:7px 10px}
+.cfg-lock,.cfg-def,.cfg-warn{margin-right:8px;padding:1px 7px;border-radius:9px;
+  font-size:11px;font-weight:600}
+.cfg-lock{background:var(--border);color:var(--text-muted)}
+.cfg-def{background:var(--teal-light);color:var(--teal-dark)}
+.cfg-warn{background:var(--gold-light);color:var(--gold-dark)}
 #screen-login .container{display:flex;align-items:center;justify-content:center;min-height:calc(100vh - 100px)}
 .login-card{background:var(--surface);border-radius:var(--radius-lg);box-shadow:var(--shadow-lg);
   padding:34px 26px;width:100%;max-width:400px;text-align:center}
@@ -210,6 +236,7 @@ tr.clickable td:first-child::after{content:'‹';color:var(--text-muted);margin-
       <button class="tab"        data-t="time"    onclick="setTab('time')">פעילות מפקחים</button>
       <button class="tab"        data-t="cover"   onclick="setTab('cover')">כיסוי ומפה</button>
       <button class="tab"        data-t="users"   onclick="setTab('users')">משתמשים</button>
+      <button class="tab"        data-t="config"  onclick="setTab('config')">הגדרות</button>
     </div>
     <div class="toolbar">
       <div id="range-chips" style="display:flex;gap:10px">
@@ -327,9 +354,11 @@ async function doLogin(){
 function enter(){
   // הסתרה לנוחות בלבד. האכיפה היא בשרת: צופה שיקרא ל-users או ל-setauth ייחסם.
   const isAdmin = state.role === 'admin';
-  const ut = document.querySelector('.tab[data-t="users"]');
-  if(ut) ut.style.display = isAdmin ? '' : 'none';
-  if(!isAdmin && state.tab==='users') state.tab='base';
+  ['users','config'].forEach(t=>{
+    const el=document.querySelector('.tab[data-t="'+t+'"]');
+    if(el) el.style.display = isAdmin ? '' : 'none';
+    if(!isAdmin && state.tab===t) state.tab='base';
+  });
   $('#who').textContent = state.name + (state.role==='viewer' ? ' · צפייה בלבד' : '');
   $('#btn-logout').style.display='';
   $('#screen-login').classList.remove('active');
@@ -347,7 +376,8 @@ function setRange(d){
 function setTab(t){
   state.tab=t;
   $$('.tab').forEach(x=>x.classList.toggle('active',x.dataset.t===t));
-  $('#range-chips').style.visibility = (t==='base'||t==='users') ? 'hidden' : 'visible';
+  $('#range-chips').style.visibility =
+    (t==='base'||t==='users'||t==='config') ? 'hidden' : 'visible';
   if(state.data) render();
 }
 
@@ -515,6 +545,7 @@ function render(){
   if(state.tab==='results') return renderResults();
   if(state.tab==='time')    return renderTime();
   if(state.tab==='users')   return renderUsers();
+  if(state.tab==='config')  return renderConfig();
   return renderCoverage();
 }
 
@@ -1218,6 +1249,93 @@ function drawCoverMap(inst,C){
   setTimeout(fit,600);
   addEventListener('resize', fit);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) fit(); });
+}
+
+/* ══════ הגדרות ══════
+   כל שדה עם הסבר, טווח קשיח וטווח מומלץ. האכיפה בשרת:
+   ערך מחוץ לטווח נדחה עם הסבר, וכל שינוי נרשם ביומן עם הערך
+   הקודם והחדש. כאן זו רק תצוגה — שדה שנשלח מכאן ואינו בטבלת
+   השרת יידחה. */
+let CFGCACHE=null;
+
+async function renderConfig(){
+  $('#content').innerHTML='<div class="loading">טוען הגדרות…</div>';
+  try{
+    const r=await apiPost({action:'settings'});
+    if(!r.ok) throw new Error(r.error);
+    CFGCACHE=r.data;
+    drawConfig();
+  }catch(e){
+    $('#content').innerHTML='<div class="panel"><div class="empty"><div class="ic">⚠</div>'+
+      esc(e.message)+'</div></div>';
+  }
+}
+
+function drawConfig(){
+  const F=CFGCACHE.fields;
+  const warned=F.filter(f=>f.key&&f.warn).length;
+  let html='<div class="panel"><h3>הגדרות המערכת'+
+    '<span class="note">כל שינוי נרשם ביומן עם הערך הקודם והחדש · '+
+    'ערך מחוץ לטווח נדחה בשרת</span></h3><div class="body">';
+
+  if(warned) html+='<div class="warn-strip" style="margin-bottom:14px">⚠ '+
+    (warned===1 ? 'ערך אחד מחוץ לטווח המומלץ. הוא פעיל'
+                : warned+' ערכים מחוץ לטווח המומלץ. הם פעילים')+
+    ' — בדוק שזה מכוון.</div>';
+
+  F.forEach(f=>{
+    if(!f.key){ html+='<h4 class="cfg-group">'+esc(f.group)+'</h4>'; return; }
+    const range=f.type==='bool' ? '' :
+      'טווח מותר '+f.min+'–'+f.max+(f.unit?' '+esc(f.unit):'')+
+      ' · מומלץ '+f.lo+'–'+f.hi;
+    html+='<div class="cfg-row'+(f.warn?' is-warn':'')+'">'+
+      '<div class="cfg-main">'+
+        '<div class="cfg-label">'+esc(f.label)+
+          (f.readonly?'<span class="cfg-lock">קריאה בלבד</span>':'')+
+          (f.is_default?'<span class="cfg-def">ברירת מחדל</span>':'')+
+          (f.warn?'<span class="cfg-warn">מחוץ למומלץ</span>':'')+'</div>'+
+        '<div class="cfg-help">'+esc(f.help)+'</div>'+
+        (range?'<div class="cfg-range">'+esc(range)+'</div>':'')+
+      '</div>'+
+      '<div class="cfg-edit">'+
+        (f.readonly
+          ? '<span class="cfg-ro">'+esc(
+              f.type==='bool' ? (/^(true|כן|1|v|yes)$/i.test(String(f.value).trim()) ? 'דלוק' : 'כבוי')
+                              : f.value)+'</span>'
+          : '<input class="cfg-input" id="cfg-'+esc(f.key)+'" value="'+esc(f.value)+'">'+
+            '<button class="cfg-save" data-cfg="'+esc(f.key)+'">שמור</button>')+
+        (f.unit&&!f.readonly?'<span class="cfg-unit">'+esc(f.unit)+'</span>':'')+
+      '</div>'+
+    '</div>';
+  });
+  html+='</div></div>'+
+    '<div class="panel"><h3>מה אינו כאן</h3><div class="body cfg-help" style="padding:14px 16px">'+
+    'מפתח הגישה אינו מוצג ואינו ניתן לעריכה מכאן — הוא יושב בקוד בלבד.<br>'+
+    'אימות הסיסמה נשלט מלשונית המשתמשים, שבה הכיבוי דורש אישור מפורש בכתב.<br>'+
+    'ניהול המשתמשים הוא לשונית עצמאית ואינו חלק ממסך זה.'+
+    '</div></div>';
+  $('#content').innerHTML=html;
+
+  $$('.cfg-save').forEach(b=>b.addEventListener('click',()=>saveSetting(b.dataset.cfg)));
+}
+
+async function saveSetting(key){
+  const el=$('#cfg-'+key);
+  if(!el) return;
+  const btn=document.querySelector('.cfg-save[data-cfg="'+key+'"]');
+  const was=btn.textContent;
+  btn.disabled=true; btn.textContent='שומר…';
+  try{
+    const r=await apiPost({action:'setsetting', setting:key, value:el.value});
+    if(!r.ok) throw new Error(r.error);
+    if(r.data.unchanged) flash('לא היה שינוי');
+    else if(r.data.warn) flash(r.data.warn+' — נשמר', true);
+    else flash('נשמר: '+r.data.before+' ← '+r.data.value);
+    await renderConfig();
+  }catch(e){
+    flash(e.message, true);
+    btn.disabled=false; btn.textContent=was;
+  }
 }
 
 /* ══════ ניהול משתמשים ══════ */
