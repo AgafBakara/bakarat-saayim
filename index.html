@@ -552,23 +552,26 @@ const ACTIVITIES = [
   { id: 'teaching',            label: 'מלמד כיתה / משמש כמורה' },
   { id: 'admin',               label: 'תפקיד מנהלי / מזכירות' },
   { id: 'idle',                label: 'לא בפעילות — חדר מורים / מסדרון' },
-  { id: 'other',               label: 'פעילות אחרת', needsText: true }
+  { id: 'other',               label: 'פעילות אחרת', needsText: true },
+  // מוצגת רק כשהתלמיד נעדר או שוחרר מוקדם — ראה renderActivities
+  { id: 'reassigned',          label: 'התלמיד לא הגיע היום, הסייעת שובצה מחדש',
+    awayOnly: true }
 ];
 
 const MATRIX = {
   // סוג סייע → פעילות → תוצאה
   'צמוד אישי': { with_student_class:'ok', with_student_out:'ok', nearby_available:'partial',
                  in_class_not_student:'flag', other_students:'flag', teaching:'flag',
-                 admin:'flag', idle:'flag', other:'partial' },
+                 admin:'flag', idle:'flag', other:'partial', reassigned:'ok' },
   'רפואי':     { with_student_class:'ok', with_student_out:'ok', nearby_available:'ok',
                  in_class_not_student:'partial', other_students:'flag', teaching:'flag',
-                 admin:'flag', idle:'flag', other:'partial' },
+                 admin:'flag', idle:'flag', other:'partial', reassigned:'ok' },
   'כיתתי':     { with_student_class:'ok', with_student_out:'ok', nearby_available:'ok',
                  in_class_not_student:'ok', other_students:'ok', teaching:'flag',
-                 admin:'flag', idle:'flag', other:'partial' },
+                 admin:'flag', idle:'flag', other:'partial', reassigned:'ok' },
   'שילוב':     { with_student_class:'ok', with_student_out:'ok', nearby_available:'ok',
                  in_class_not_student:'ok', other_students:'ok', teaching:'flag',
-                 admin:'flag', idle:'flag', other:'partial' }
+                 admin:'flag', idle:'flag', other:'partial', reassigned:'ok' }
 };
 
 const PRESENCE = [
@@ -589,7 +592,10 @@ const STUDENT = [
 // פעילויות שמשמעותן מגע ישיר עם התלמיד.
 // אם נבחרה אחת מהן, התלמיד לא יכול להיות נעדר.
 const CONTACT_ACTIVITIES = ['with_student_class', 'with_student_out', 'nearby_available'];
-const NO_STUDENT_STATES  = ['absent', 'unknown'];
+const NO_STUDENT_STATES  = ['absent', 'unknown', 'released'];
+/* התלמיד אינו בבית הספר מסיבה ידועה */
+const STUDENT_AWAY       = ['absent', 'released'];
+const AWAY_ONLY_ACTIVITY = 'reassigned';
 
 const VERIFY = [
   { id: 'teacher',   label: 'מחנכת הכיתה' },
@@ -690,6 +696,20 @@ function dbAll() {
       const q = db.transaction(STORE, 'readonly').objectStore(STORE).getAll();
       q.onsuccess = () => res(q.result || []); q.onerror = () => rej(q.error);
     } catch (e) { res(memQueue || []); }
+  });
+}
+/** עדכון פריט קיים במקום. משמש לסימון דיווח כנדחה, בלי למחוק אותו. */
+function dbPut(item) {
+  if (useMem_()) {
+    memQueue = (memQueue || []).map(x => x.local_id === item.local_id ? item : x);
+    return Promise.resolve();
+  }
+  return new Promise((res, rej) => {
+    try {
+      const tx = db.transaction(STORE, 'readwrite');
+      tx.objectStore(STORE).put(item);
+      tx.oncomplete = res; tx.onerror = () => rej(tx.error);
+    } catch (e) { res(); }
   });
 }
 function dbDel(id) {
@@ -1293,6 +1313,10 @@ function syncContradictions() {
   CONTACT_ACTIVITIES.forEach(id => setOptDisabled('activity', id, noStudent,
     'לא ניתן — דיווחת שהתלמיד אינו בבית הספר'));
 
+  // "שובצה מחדש" רלוונטית רק כשהתלמיד נעדר או שוחרר מוקדם
+  setOptDisabled('activity', AWAY_ONLY_ACTIVITY, !STUDENT_AWAY.includes(a.student),
+    'רלוונטי רק כשהתלמיד נעדר או שוחרר מוקדם — ענה תחילה על שאלה 3');
+
   const warn = $('#contradiction');
   if (warn) warn.style.display = (contact && noStudent) ? 'block' : 'none';
 }
@@ -1338,6 +1362,9 @@ function validate() {
   if (CONTACT_ACTIVITIES.indexOf(a.activity) > -1 && NO_STUDENT_STATES.indexOf(a.student) > -1)
     missing.push('סתירה בין שאלה 2 לשאלה 3');
 
+  if (a.activity === AWAY_ONLY_ACTIVITY && !STUDENT_AWAY.includes(a.student))
+    missing.push('״שובצה מחדש״ אפשרי רק כשהתלמיד נעדר או שוחרר מוקדם');
+
   // שדות טקסט חובה
   const needsText = { presence:'#q1-text', activity:'#q2-text', student:'#q3-text' };
   for (const [g, selr] of Object.entries(needsText)) {
@@ -1362,18 +1389,30 @@ document.addEventListener('input', e => { if (e.target.closest('#screen-check'))
 /* ═══════════════════════════════════════════════════════════
    VERDICT + SAVE
    ═══════════════════════════════════════════════════════════ */
+/* חייבת להישאר זהה ל-computeVerdict_ בשרת. השרת מחשב מחדש ודורס. */
 function computeVerdict() {
   const a = state.answers;
+  const away = STUDENT_AWAY.includes(a.student);
+
   if (a.presence === 'not_found') {
-    // תלמיד נעדר → זו לא בהכרח חריגה, אבל נדרשת הצלבה מול השעון
-    return a.student === 'absent' ? 'review' : 'flag';
+    // תלמיד נעדר או ששוחרר → לא בהכרח חריגה, נדרשת הצלבה מול השעון
+    return away ? 'review' : 'flag';
   }
   if (a.presence === 'blocked') return 'review';
   if (a.presence === 'substitute' || a.presence === 'approved') return 'review';
-  if (a.student === 'unknown') return 'flag';
-  const m = MATRIX[state.subject.type] || {};
+
+  const type = state.subject.type;
+  if (a.student === 'unknown' && type !== 'כיתתי') return 'flag';
+
+  const m = MATRIX[type] || {};
   const r = m[a.activity];
-  return r === 'ok' ? 'ok' : r === 'partial' ? 'review' : 'flag';
+  const base = r === 'ok' ? 'ok' : r === 'partial' ? 'review' : 'flag';
+  if (!away) return base;
+
+  // התלמיד אינו בבית הספר — המטריצה אינה מקור אמת כאן
+  if (a.activity === AWAY_ONLY_ACTIVITY) return 'ok';
+  if (a.activity === 'idle') return 'flag';
+  return base === 'flag' ? 'review' : base;
 }
 
 const VERDICT_LABEL = { ok:'תקין', review:'לבדיקה חוזרת', flag:'חריגה' };
@@ -1474,15 +1513,23 @@ let _flushing = false;
 async function flushQueue() {
   if (CONFIG.DEMO_MODE || !state.online || _flushing) return null;
   _flushing = true;
-  let last = null;
+  let last = null, rejected = 0, stuck = 0;
   try {
-    const items = await dbAll();
+    const items = (await dbAll()).filter(it => !it.rejected);
     for (const it of items) {
       try {
         const r = await apiPost({ action: 'save', ...it.payload });
         if (!r.ok) {
-          // דחייה עניינית של השרת — לא לנסות שוב לנצח
-          await dbDel(it.local_id);
+          /* שגיאה זמנית — סשן שפג, נעילה, תקלת שרת — אינה עילה
+             למחוק ראיה שכבר נאספה. הדיווח נשאר בתור לניסיון הבא.
+             רק דחיית ולידציה שהשרת סימן permanent לא תצליח לעולם,
+             וגם היא אינה נמחקת: היא נשמרת כ"נדחתה" עם הסיבה. */
+          if (r.permanent) {
+            await dbReject(it.local_id, r.error);
+            rejected++;
+          } else {
+            stuck++;
+          }
           last = { error: r.error };
           continue;
         }
@@ -1490,10 +1537,25 @@ async function flushQueue() {
         await dbDel(it.local_id);
       } catch (e) { break; }
     }
-    state.queue = await dbAll();
+    const all = await dbAll();
+    state.queue = all.filter(it => !it.rejected);
+    state.rejected = all.filter(it => it.rejected);
     updateSyncPill();
+    if (rejected) toast(rejected + ' דיווחים נדחו על ידי השרת — ראה ״דיווחים שנדחו״', 'error');
+    else if (stuck) toast(stuck + ' דיווחים ממתינים לשליחה חוזרת', 'warn');
   } finally { _flushing = false; }
   return last;
+}
+
+/** סימון דיווח כנדחה. אינו נמחק — הראיה נשמרת עם סיבת הדחייה. */
+async function dbReject(local_id, reason) {
+  const all = await dbAll();
+  const it = all.find(x => x.local_id === local_id);
+  if (!it) return;
+  it.rejected = true;
+  it.reject_reason = String(reason || '');
+  it.rejected_at = nowISO();
+  await dbPut(it);
 }
 
 function updateSyncPill() {
