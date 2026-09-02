@@ -1098,10 +1098,18 @@ function drawCoverMap(inst,C){
      .bindPopup(`<b>${esc(c.assistant)}</b><br>${esc(c.institution)}<br>${esc(c.date)} · ${esc(c.inspector)}<br>מרחק: ${c.distance} מ׳`)
   ));
 
+  /* fitBounds על מכל שרוחבו עדיין 0 נופל לזום 0 — כל העולם,
+     וכל המוסדות על נקודה אחת. מודדים את המכל לפני כל התאמה,
+     ומתאימים מחדש בכל אירוע שעשוי לשנות את הגודל. */
   const pts=I.map(i=>[i.lat,i.lng]);
-  if(pts.length) map.fitBounds(L.latLngBounds(pts).pad(0.12));
-  setTimeout(()=>map.invalidateSize(),150);
-  setTimeout(()=>map.invalidateSize(),600);
+  const fit=()=>{ map.invalidateSize();
+    if(pts.length && map.getSize().x > 0)
+      map.fitBounds(L.latLngBounds(pts).pad(0.12)); };
+  fit();
+  setTimeout(fit,150);
+  setTimeout(fit,600);
+  addEventListener('resize', fit);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) fit(); });
 }
 
 /* ══════ ניהול משתמשים ══════ */
