@@ -367,6 +367,16 @@ async function load(){
                   T.id_match_pct < (T.id_match_min || 50);
     if(idBad) bits.push('⚠ התאמת מזהי נוכחות: ' + T.id_match_pct + '%' +
       (T.id_match_counts ? ' (' + T.id_match_counts + ')' : '') + ' — בדוק את עמודת ת"ז');
+
+    /* דיווחים שנאספו בשטח ולא נשלחו. הם קיימים רק על המכשיר,
+       ואיפוס דפדפן מוחק אותם — ולכן זו אזהרה ולא הערה. */
+    const stuck = T.queue_stuck || [];
+    if(stuck.length){
+      const total = stuck.reduce((s,x)=>s+x.pending,0);
+      bits.push('⚠ ' + total + ' דיווחים ממתינים על מכשירי מפקחים: ' +
+        stuck.map(x=>esc(x.name) + ' (' + x.pending + ')').join(', ') +
+        ' — ראיה שלא נשלחה קיימת רק על המכשיר');
+    }
     $('#hidden-note').innerHTML = bits.join(' · ');
     $('#hidden-note').style.color = (!T.auth_on || idBad) ? 'var(--danger)' : '';
     $('#hidden-note').style.fontWeight = idBad ? '700' : '';

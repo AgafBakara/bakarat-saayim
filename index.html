@@ -654,7 +654,13 @@ const state = {
   checkedToday: [],      // רשומות שהושלמו
   visitedInst: [],
   queue: [],
-  online: navigator.onLine
+  rejected: [],
+  online: navigator.onLine,
+  /* navigator.onLine מדווח על חיבור לרשת, לא על הגעה לשרת.
+     ווייפיי של בית ספר עם שער כניסה הוא "מקוון" ואינו מגיע
+     לשומקום. sendFailed נקבע לפי מה שקרה בפועל בשליחה, והוא
+     מה שהתווית מציגה. */
+  sendFailed: false
 };
 
 /* ═══════════════════════════════════════════════════════════
@@ -739,6 +745,7 @@ async function apiGet(action, params = {}) {
     key: CONFIG.ACCESS_KEY || '',
     token: state.token || '',
     inspector: (state.inspector && state.inspector.id) || '',
+    queue_pending: String((state.queue || []).length),
     ...params
   }).toString();
   const res = await fetch(`${CONFIG.API_URL}?${qs}`);
@@ -770,6 +777,11 @@ async function apiPost(payload) {
   payload.key = CONFIG.ACCESS_KEY || '';
   if (state.token) payload.token = state.token;
   if (state.inspector && !payload.inspector) payload.inspector = state.inspector.id;
+  /* עומק התור נוסע כנוסע חופשי על כל בקשה. השרת כותב אותו רק
+     כשהוא משתנה, וההנהלה רואה בדשבורד שיש ראיה שממתינה על
+     מכשיר. בלי זה דיווח שלא נשלח אינו קיים לאיש מלבד המפקח. */
+  if (payload.queue_pending === undefined && state.queue)
+    payload.queue_pending = state.queue.length;
   const res = await fetch(CONFIG.API_URL, {
     method: 'POST', body: JSON.stringify(payload),
     headers: { 'Content-Type': 'text/plain;charset=utf-8' }
@@ -1641,8 +1653,15 @@ async function queueRecord(meta) {
 }
 
 let _flushing = false;
+let _backoffMs = 0;
+let _nextFlushAt = 0;
 async function flushQueue() {
   if (CONFIG.DEMO_MODE || !state.online || _flushing) return null;
+  // בלי זהות אין למי לשלוח; הדיווח ממתין בתור עד ההתחברות
+  if (state.authRequired && !state.token) return null;
+  if (!state.token && !state.inspector) return null;
+  // השהיה גוברת מול שרת שאינו עונה: 30 שניות ועד 5 דקות
+  if (Date.now() < _nextFlushAt) return null;
   _flushing = true;
   let last = null, rejected = 0, stuck = 0;
   try {
@@ -1665,16 +1684,25 @@ async function flushQueue() {
           continue;
         }
         last = r.data;
+        state.sendFailed = false;     // הגיע לשרת והתקבל
         await dbDel(it.local_id);
-      } catch (e) { break; }
+      } catch (e) { state.sendFailed = true; break; }
     }
+    if (stuck) state.sendFailed = true;
     const all = await dbAll();
     state.queue = all.filter(it => !it.rejected);
     state.rejected = all.filter(it => it.rejected);
     updateSyncPill();
     if (rejected) toast(rejected + ' דיווחים נדחו על ידי השרת — ראה ״דיווחים שנדחו״', 'error');
     else if (stuck) toast(stuck + ' דיווחים ממתינים לשליחה חוזרת', 'warn');
-  } finally { _flushing = false; }
+  } catch (e) {
+    state.sendFailed = true;          // חריגת רשת — הבקשה לא הגיעה לשרת
+    updateSyncPill();
+  } finally {
+    _flushing = false;
+    _backoffMs = state.sendFailed ? Math.min(_backoffMs * 2 || 60000, 300000) : 0;
+    _nextFlushAt = Date.now() + _backoffMs;
+  }
   return last;
 }
 
@@ -1689,9 +1717,15 @@ async function dbReject(local_id, reason) {
   await dbPut(it);
 }
 
+/* התווית מתארת את מה שקרה בפועל, ולא את מה שהדפדפן מצהיר.
+   ״מקוון״ ליד תור שלא נשלח הוא בדיוק ההודעה שגורמת למפקח
+   לסגור את האפליקציה ולחשוב שהדיווח נמסר. */
 function updateSyncPill() {
   if (!state.online) return setSync('offline', 'לא מקוון');
+  if (state.queue.length && state.sendFailed)
+    return setSync('offline', state.queue.length + ' ממתינים · אין קשר לשרת');
   if (state.queue.length) return setSync('pending', state.queue.length + ' ממתינים');
+  if (state.rejected.length) return setSync('pending', state.rejected.length + ' נדחו');
   setSync('', 'מקוון');
 }
 
@@ -1783,9 +1817,27 @@ function stopTimers() { while (timers.length) clearInterval(timers.pop()); }
 window.addEventListener('online',  () => { state.online = true;  updateSyncPill(); flushQueue(); });
 window.addEventListener('offline', () => { state.online = false; updateSyncPill(); });
 
+/* טיימר ה-30 שניות נעצר כשהדפדפן מקפיא את הלשונית — וזה בדיוק
+   מה שקורה כשהמפקח נועל את הטלפון בין מוסד למוסד. שליחה גם
+   ברגע החזרה לאפליקציה, ולא רק בתורו של הטיימר. */
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) return;
+  state.online = navigator.onLine;
+  updateSyncPill();
+  flushQueue();
+});
+window.addEventListener('focus', () => flushQueue());
+
 (async function boot() {
   setText_('#build-stamp', CONFIG.VERSION);
-  try { await openDB(); state.queue = await dbAll(); } catch (e) { console.error(e); }
+  try {
+    await openDB();
+    const all = await dbAll();
+    // דיווח שנדחה אינו ממתין לשליחה. עד כה הוא נספר כממתין
+    // עד ה-flush הראשון, והתווית הציגה מספר גדול מדי.
+    state.queue    = all.filter(it => !it.rejected);
+    state.rejected = all.filter(it => it.rejected);
+  } catch (e) { console.error(e); }
   updateSyncPill();
   await setupLogin();
   if (state.authRequired && await restoreSession()) enterApp();
