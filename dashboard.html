@@ -407,6 +407,8 @@ document.addEventListener('click', e => {
     case 'month':      return drillMonth(v);
     case 'assistant':  return drillAssistant(v);
     case 'inspDays':   return drillInspDays(v);
+    case 'day':        return drillDay(Number(tr.dataset.i));
+    case 'dayF':       return drillDayF(Number(tr.dataset.i));
   }
 });
 
@@ -918,7 +920,7 @@ function renderTime(){
 }
 
 function dayRow(d,i,fn){
-  return `<tr class="clickable" onclick="${fn}(${i})">
+  return `<tr class="clickable" data-drill="${fn}" data-i="${i}">
     <td style="white-space:nowrap">${esc(d.date)}</td>
     <td style="white-space:nowrap">${esc(d.inspector)}${roleTag(d.inspector)}</td>
     <td class="num-cell">${clock(d.checks[0].dispatch_time||d.checks[0].arrival_time)}</td>
@@ -935,7 +937,7 @@ const DAY_HEAD=`<tr><th>תאריך</th><th>מפקח</th><th>התחלה</th><th>�
 function daysPanel(days){
   return `<div class="panel"><h3>ימי עבודה אחרונים <span class="note">לחץ על יום לציר הזמן המלא</span></h3>
     <div class="body" style="overflow-x:auto;max-height:520px"><table><thead>${DAY_HEAD}</thead>
-    <tbody>${days.map((d,i)=>dayRow(d,i,'drillDay')).join('')}</tbody></table></div></div>`;
+    <tbody>${days.map((d,i)=>dayRow(d,i,'day')).join('')}</tbody></table></div></div>`;
 }
 
 function drillInspDays(name){
@@ -949,7 +951,7 @@ function drillInspDays(name){
     {n:fmtHM(sum(d=>d.onSite)),l:'סה״כ במוסדות'},
     {n:fmtHM(sum(d=>d.travel)),l:'סה״כ נסיעה'},
     {n:fmtHM(sum(d=>d.gap)),l:'סה״כ לא מוסבר'}
-  ], `<table><thead>${DAY_HEAD}</thead><tbody>${days.map((d,i)=>dayRow(d,i,'drillDayF')).join('')}</tbody></table>`);
+  ], `<table><thead>${DAY_HEAD}</thead><tbody>${days.map((d,i)=>dayRow(d,i,'dayF')).join('')}</tbody></table>`);
 }
 function drillDay(i){ timeline((W.days||[])[i]); }
 function drillDayF(i){ timeline((W.daysF||[])[i]); }
@@ -1050,8 +1052,8 @@ function renderCoverage(){
           <span style="color:#dc2626">●</span> מעל 60 או טרם</span>
       </div>
       <div id="map"></div></div></div>
-  <div class="grid2">${coverList(inst,'מוסדות לפי זמן מהבקרה האחרונה','drillInstitution','name','n','שיבוצים')}
-  ${coverList(ass,'סייעים לפי זמן מהבדיקה האחרונה','drillAssistant','name','institution','מוסד')}</div>`;
+  <div class="grid2">${coverList(inst,'מוסדות לפי זמן מהבקרה האחרונה','institution','name','n','שיבוצים')}
+  ${coverList(ass,'סייעים לפי זמן מהבדיקה האחרונה','assistant','name','institution','מוסד')}</div>`;
   setTimeout(()=>drawCoverMap(inst,C),120);
 }
 
@@ -1060,7 +1062,7 @@ function coverList(rows,title,fn,key,extra,extraLabel){
       <span class="note">הרשימה שקובעת לאן לשלוח מחר</span></h3>
     <div class="body" style="max-height:460px;overflow:auto"><table><thead><tr>
       <th>שם</th><th>${extraLabel}</th><th>בקרה אחרונה</th><th>מאז</th>
-    </tr></thead><tbody>${rows.slice(0,60).map(r=>`<tr class="clickable" onclick="${fn}('${esc(r[key]).replace(/'/g,'&#39;')}')">
+    </tr></thead><tbody>${rows.slice(0,60).map(r=>`<tr class="clickable" data-drill="${fn}" data-v="${esc(r[key])}">
       <td>${esc(r[key])}</td><td>${esc(r[extra])}</td>
       <td class="num-cell">${r.last||'—'}</td><td>${agePill(r.days)}</td>
     </tr>`).join('')}</tbody></table></div></div>`;
