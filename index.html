@@ -1676,6 +1676,7 @@ async function flushQueue() {
              וגם היא אינה נמחקת: היא נשמרת כ"נדחתה" עם הסיבה. */
           if (r.permanent) {
             await dbReject(it.local_id, r.error);
+            await sendToQuarantine(it, r.error);
             rejected++;
           } else {
             stuck++;
@@ -1689,6 +1690,11 @@ async function flushQueue() {
       } catch (e) { state.sendFailed = true; break; }
     }
     if (stuck) state.sendFailed = true;
+    /* דיווח שנדחה בעבר וטרם הגיע להסגר — למשל כי הרשת נפלה
+       באותו רגע — מנסה שוב בכל מחזור. */
+    for (const it of (await dbAll()).filter(x => x.rejected && !x.quarantined))
+      await sendToQuarantine(it, it.reject_reason);
+
     const all = await dbAll();
     state.queue = all.filter(it => !it.rejected);
     state.rejected = all.filter(it => it.rejected);
@@ -1704,6 +1710,32 @@ async function flushQueue() {
     _nextFlushAt = Date.now() + _backoffMs;
   }
   return last;
+}
+
+/**
+ * דיווח שנדחה נשלח להסגר בשרת.
+ *
+ * עד כה הוא נשמר על המכשיר בלבד, ואיפוס דפדפן מחק אותו יחד עם
+ * סיבת הדחייה. ההסגר הוא לשונית מבודדת: היא אינה נקראת בהצלבה
+ * ואינה נספרת בדשבורד, ולכן שמירה שם אינה הופכת דיווח פסול
+ * לראיה — היא רק מונעת את היעלמותו.
+ *
+ * כישלון כאן אינו מפיל דבר ואינו מוחק: מנסים שוב ב-flush הבא.
+ */
+async function sendToQuarantine(item, reason) {
+  if (CONFIG.DEMO_MODE || item.quarantined) return;
+  try {
+    const r = await apiPost({ action: 'quarantine', local_id: item.local_id,
+                              reason: String(reason || ''), payload: item.payload });
+    if (!r || !r.ok) return;                     // יישלח בניסיון הבא
+    /* קוראים מחדש לפני הכתיבה. dbReject עדכנה את הרשומה זה עתה,
+       וכתיבה של העותק שהיה ביד הייתה מוחקת את סימון הדחייה ואת
+       סיבתה — והדיווח היה חוזר לתור לנצח. */
+    const fresh = (await dbAll()).find(x => x.local_id === item.local_id) || item;
+    fresh.quarantined = true;
+    fresh.quarantined_at = nowISO();
+    await dbPut(fresh);
+  } catch (e) { /* יישלח בניסיון הבא */ }
 }
 
 /** סימון דיווח כנדחה. אינו נמחק — הראיה נשמרת עם סיבת הדחייה. */

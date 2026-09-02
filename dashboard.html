@@ -1028,7 +1028,11 @@ function agePill(d){
 
 function renderCoverage(){
   const {inst,ass}=coverageData();
+  /* נעיצה דורשת קואורדינטות. אחרי חלון השמירה הן נמחקות, והמפה
+     חייבת להצהיר על כך — אחרת נעיצות שנמחקו כדין נראות כמו
+     "כמעט לא בדקנו". אותה משפחת כשל כמו נרמול המזהים. */
   const C=state.data.checks.filter(c=>c.lat&&c.lng);
+  const gpsFrom=(state.data.totals||{}).gps_from||'';
   const never=inst.filter(i=>i.days==null).length;
   const stale=inst.filter(i=>i.days!=null&&i.days>60).length;
   const aNever=ass.filter(a=>a.days==null).length;
@@ -1056,7 +1060,13 @@ function renderCoverage(){
           <span style="color:#c6a636">●</span> 15–60 &nbsp;
           <span style="color:#dc2626">●</span> מעל 60 או טרם</span>
       </div>
-      <div id="map"></div></div></div>
+      <div id="map"></div>
+      <div class="hint" style="margin-top:8px;line-height:1.6">
+        נעיצות הבדיקה מוצגות רק כשנשמרו קואורדינטות. קואורדינטות גולמיות
+        נשמרות עד סוף שנת הלימודים ועוד שלושה חודשים${gpsFrom ? ', כלומר מ-' + esc(gpsFrom) + ' ואילך' : ''},
+        ואז נמחקות. המרחק המחושב נשמר לצמיתות.
+        <b>מיעוט נעיצות בתקופה ישנה אינו אומר שלא בוצעו בדיקות.</b>
+      </div></div></div>
   <div class="grid2">${coverList(inst,'מוסדות לפי זמן מהבקרה האחרונה','institution','name','n','שיבוצים')}
   ${coverList(ass,'סייעים לפי זמן מהבדיקה האחרונה','assistant','name','institution','מוסד')}</div>`;
   setTimeout(()=>drawCoverMap(inst,C),120);
