@@ -1316,9 +1316,33 @@ async function forfeitTarget() {
   }
 }
 
+/**
+ * ממצא 13: כפתור אחד כיסה שני מצבים שונים לגמרי — מוסד שסירב
+ * להכניס, ותקלה טכנית אצל המפקח. הראשון הוא האות החזק ביותר
+ * להתארגנות מוסדית; השני הוא מכשיר. עירובם ניפח מדד שמאשים
+ * מוסדות. עכשיו נשאלת השאלה במפורש.
+ */
 function reportBlocked() {
-  if (!confirm('לדווח שלא ניתן להגיע או שסורבה כניסה?')) return;
-  queueRecord({ type: 'access_blocked', verdict: 'flag' });
+  const what = prompt(
+    'מה קרה?' + String.fromCharCode(10) + String.fromCharCode(10) +
+    '1 — המוסד סירב להכניס אותי' + String.fromCharCode(10) +
+    '2 — לא הצלחתי לאמת מיקום (GPS)' + String.fromCharCode(10) +
+    '3 — לא ניתן להגיע מסיבה אחרת' + String.fromCharCode(10) + String.fromCharCode(10) +
+    'הקלד 1, 2 או 3');
+  if (what === null) return;
+  const pick = String(what).trim();
+  if (['1', '2', '3'].indexOf(pick) === -1) { toast('בחירה לא תקינה', 'error'); return; }
+
+  const why = prompt('פרט בקצרה מה קרה (חובה):');
+  if (why === null) return;
+  if (String(why).trim().length < 4) { toast('נדרש פירוט', 'error'); return; }
+
+  const acc = state.gps && state.gps.accuracy ? Math.round(state.gps.accuracy) : '';
+  state.answers = state.answers || {};
+  state.answers.notes = (pick === '2' && acc ? 'דיוק ' + acc + ' מ׳ · ' : '') + String(why).trim();
+
+  queueRecord({ type: pick === '2' ? 'gps_failed' : 'access_blocked',
+                verdict: pick === '2' ? 'review' : 'flag' });
   toast('הדיווח נרשם', 'success');
   finishInstitution();
 }

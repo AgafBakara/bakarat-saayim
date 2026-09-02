@@ -433,6 +433,20 @@ function roleTag(name){
   return '';
 }
 
+/* groupBy — קיבוץ לפי פונקציה ולא לפי שם שדה.
+   ממצא 15: ההצלבה נעשתה לפי שם. שני סייעים בעלי אותו שם התמזגו
+   לרשומה אחת, ושינוי כתיב פיצל היסטוריה. המזהה הוא המפתח.
+   הנרמול זהה ל-normId_ בשרת: אפסים מובילים יורדים כשהערך כולו
+   ספרות — ת"ז שהגיליון קלט כמספר איבדה אפס מוביל בצד אחד. */
+function nid(v){
+  const t=String(v===undefined||v===null?'':v).trim();
+  return /^\d+$/.test(t) ? String(Number(t)) : t;
+}
+
+function groupBy(arr,fn){
+  const m={}; arr.forEach(x=>{const k=fn(x)||'—';(m[k]=m[k]||[]).push(x);}); return m;
+}
+
 function group(arr,key){
   const m={}; arr.forEach(x=>{const k=x[key]||'—';(m[k]=m[k]||[]).push(x);}); return m;
 }
@@ -443,7 +457,7 @@ function rosterTable(list){
   return `<table><thead><tr>
     <th>שם הסייע</th><th>ת.ז</th><th>סוג</th><th>מוסד</th><th>תלמיד</th><th>כיתה</th><th>נבדק</th>
   </tr></thead><tbody>${list.map(r=>{
-    const a=C.filter(c=>c.assistant===r.name);
+    const a=C.filter(c=>nid(c.aid)===nid(r.aid));
     const f=a.filter(c=>c.verdict==='flag').length;
     return `<tr><td>${esc(r.name)}</td><td class="num-cell">${esc(r.aid)}</td>
       <td>${esc(r.atype)}</td><td>${esc(r.institution)}</td>
@@ -462,7 +476,12 @@ function checksTable(list){
   return `<table><thead><tr>
     <th>תאריך</th><th>מפקח</th><th>מוסד</th><th>סייע</th><th>סוג</th>
     <th>מצב</th><th>פעילות</th><th>תלמיד</th><th>אימות</th><th>תוצאה</th>
-  </tr></thead><tbody>${list.slice().reverse().map(c=>`<tr>
+  </tr></thead><tbody>${list.slice().reverse().map(c=>{
+    /* ממצא 27: הטקסט החופשי שהמפקח כתב לא הוצג כלל. ממצא בלי
+       הנימוק שנכתב בשטח אינו ראיה, וזה בדיוק מה שנדרש בשימוע. */
+    const notes=[c.notes,c.presence_text,c.activity_text,c.student_text]
+      .map(x=>String(x||'').trim()).filter(Boolean);
+    return `<tr>
     <td style="white-space:nowrap">${esc(c.date)}</td>
     <td style="white-space:nowrap">${esc(c.inspector)}</td>
     <td>${esc(c.institution)}</td>
@@ -472,7 +491,11 @@ function checksTable(list){
     <td class="wrap">${esc(ACT_LABEL[c.activity]||'—')}</td>
     <td style="white-space:nowrap">${esc(STUD_LABEL[c.student_status]||'—')}</td>
     <td style="white-space:nowrap">${esc(c.verified_name||VER_LABEL[c.verified_by]||'—')}</td>
-    <td>${vp(c.verdict)}</td></tr>`).join('')}</tbody></table>`;
+    <td>${vp(c.verdict)}</td></tr>` + (notes.length ? `<tr class="note-row">
+    <td colspan="10" style="background:var(--bg);color:var(--text-muted);font-size:13px;
+        padding:6px 12px 10px;border-top:0">
+      <b style="color:var(--navy)">מה נרשם בשטח:</b> ${notes.map(esc).join(' · ')}</td>
+  </tr>` : '');}).join('')}</tbody></table>`;
 }
 
 function drillChecks(title, sub, list){
@@ -637,6 +660,8 @@ function renderResults(){
   + '<div class="grid2">'+activityPanel(C)+typePanel(C)+'</div>'
   + '<div class="grid2">'+trendPanel(C)+recheckPanel(C)+'</div>'
   + blockedPanel()
+  + gpsFailedPanel()
+  + undrawablePanel()
   + assistantPanel(C);
 }
 
@@ -763,10 +788,11 @@ function drillMonth(m){
 
 /* ביקורות חוזרות — האם אחרי ממצא בוצעה בדיקה נוספת, ומה קרה בה */
 function recheckPanel(C){
-  const byA=group(C,'assistant');
+  const byA=groupBy(C,c=>nid(c.aid)||c.assistant);
   const rows=[];
-  Object.keys(byA).forEach(name=>{
-    const a=byA[name].slice().sort((x,y)=>x.date.localeCompare(y.date));
+  Object.keys(byA).forEach(key=>{
+    const a=byA[key].slice().sort((x,y)=>x.date.localeCompare(y.date));
+    const name=a[0].assistant;
     a.forEach((c,i)=>{
       if(c.verdict!=='flag') return;
       const next=a.slice(i+1).find(x=>x.date>c.date);
@@ -809,11 +835,48 @@ function blockedPanel(){
     </tr>`).join('')}</tbody></table></div></div>`;
 }
 
+/* ממצא 13: כשל GPS הוא תקלה טכנית אצל המפקח, לא התנגדות של
+   מוסד. כשהוא נספר יחד עם סירובי הכניסה, מכשיר ישן נראה כמו
+   בית ספר שמסתיר משהו. פאנל נפרד, בלי הצבע המאשים. */
+/* ממצא 31: מוסד בלי קואורדינטות, או שאין מפקח למגזר שלו, נופל
+   מבריכת ההגרלה לצמיתות — בשקט. הוא פשוט לא ייבדק לעולם, ואיש
+   לא יידע. אותה משפחת כשל כמו נרמול המזהים. */
+function undrawablePanel(){
+  const U=state.data.undrawable||[];
+  if(!U.length) return '';
+  return `<div class="panel" style="border-color:#f5b8b8">
+    <h3 style="background:var(--danger-light);color:#7f1d1d">מוסדות שלא ייכנסו להגרלה
+      <span class="note">${U.length} מוסדות פעילים שהשרת אינו יכול לשגר אליהם —
+        הם לא ייבדקו לעולם עד שהתקלה תתוקן</span></h3>
+    <div class="body" style="max-height:320px;overflow:auto"><table><thead><tr>
+      <th>סמל</th><th>מוסד</th><th>הסיבה</th></tr></thead>
+    <tbody>${U.map(u=>`<tr><td class="num-cell">${esc(u.symbol)}</td>
+      <td>${esc(u.name)}</td>
+      <td style="color:var(--danger)">${u.reasons.map(esc).join(' · ')}</td>
+    </tr>`).join('')}</tbody></table></div></div>`;
+}
+
+function gpsFailedPanel(){
+  const G=state.data.gps_failed||[];
+  if(!G.length) return '';
+  const byInsp=group(G,'inspector');
+  const rows=Object.keys(byInsp).map(k=>({k,n:byInsp[k].length,
+    insts:[...new Set(byInsp[k].map(x=>x.institution))]})).sort((a,b)=>b.n-a.n);
+  return `<div class="panel">
+    <h3>כשלי אימות מיקום
+      <span class="note">תקלה טכנית במכשיר או בקליטה — אינו סירוב כניסה.
+        ריכוז אצל מפקח אחד מצביע על מכשיר, ריכוז במוסד אחד על תנאי קליטה</span></h3>
+    <div class="body"><table><thead><tr><th>מפקח</th><th>מקרים</th><th>מוסדות</th></tr></thead>
+    <tbody>${rows.map(r=>`<tr><td>${esc(r.k)}</td><td class="num-cell">${r.n}</td>
+      <td style="font-size:13px;color:var(--text-muted)">${r.insts.map(esc).join(' · ')}</td>
+    </tr>`).join('')}</tbody></table></div></div>`;
+}
+
 function assistantPanel(C){
-  const g=group(C,'assistant');
+  const g=groupBy(C,c=>nid(c.aid)||c.assistant);
   const rows=Object.keys(g).map(k=>{
     const a=g[k], f=a.filter(c=>c.verdict==='flag').length;
-    return {name:k,inst:a[0].institution,atype:a[0].atype,n:a.length,f,
+    return {key:k,name:a[0].assistant,inst:a[0].institution,atype:a[0].atype,n:a.length,f,
             nf:a.filter(c=>c.presence==='not_found').length};
   }).filter(r=>r.f>0).sort((a,b)=>b.f-a.f||b.n-a.n).slice(0,40);
   if(!rows.length) return '';
@@ -822,14 +885,15 @@ function assistantPanel(C){
       <span class="note">${rep} עם יותר מחריגה אחת — אלה שדורשים טיפול, לא מקרה חד-פעמי</span></h3>
     <div class="body" style="max-height:440px;overflow:auto"><table><thead><tr>
       <th>שם הסייע</th><th>סוג</th><th>מוסד</th><th>בדיקות</th><th>לא נמצא</th><th>חריגות</th>
-    </tr></thead><tbody>${rows.map(r=>`<tr class="clickable" data-drill="assistant" data-v="${esc(r.name)}">
+    </tr></thead><tbody>${rows.map(r=>`<tr class="clickable" data-drill="assistant" data-v="${esc(r.key)}">
       <td>${esc(r.name)}</td><td>${esc(r.atype)}</td><td>${esc(r.inst)}</td>
       <td class="num-cell">${r.n}</td><td class="num-cell">${r.nf}</td>
       <td class="num-cell" style="color:${r.f>=2?'var(--danger)':'inherit'}">${r.f}</td>
     </tr>`).join('')}</tbody></table></div></div>`;
 }
-function drillAssistant(name){
-  drillChecks(name,'כל הבדיקות על סייע זה',state.data.checks.filter(c=>c.assistant===name));
+function drillAssistant(key){
+  const rows=state.data.checks.filter(c=>(nid(c.aid)||c.assistant)===key);
+  drillChecks((rows[0]&&rows[0].assistant)||key,'כל הבדיקות על סייע זה',rows);
 }
 
 /* ══════ פעילות מפקחים ══════ */
@@ -882,6 +946,21 @@ function renderTime(){
   const avgTrav=sum(days,d=>d.travel)/days.length;
   const avgGap =sum(days,d=>d.gap)/days.length;
 
+  /* הציפייה מגיעה מגיליון ההגדרות ומוצגת בלבד. אין חסימה בשרת
+     על אורך יום או על מספר בדיקות — הדבר היחיד שנחסם הוא
+     שיגורים שלא הבשילו להגעה. */
+  const expH=Number((state.data.totals||{}).expected_workday_hours)||0;
+
+  /* יעדים שנפתחו ולא הסתיימו בהגעה. אלה אינם מופיעים בבדיקות —
+     אין להם רשומה — ולכן הם מגיעים בנפרד משורות השיגור. */
+  const DS=(state.data.dispatch_stats||[]);
+  const dsByInsp={};
+  DS.forEach(d=>{
+    const k=d.name||d.id;
+    const a=dsByInsp[k]||(dsByInsp[k]={forfeited:0,abandoned:0,total:0});
+    a.forfeited+=d.forfeited||0; a.abandoned+=d.abandoned||0; a.total+=d.total||0;
+  });
+
   const byInsp=group(days,'inspector');
   const rows=Object.keys(byInsp).map(k=>{
     const a=byInsp[k];
@@ -889,16 +968,20 @@ function renderTime(){
           trav=sum(a,d=>d.travel), gap=sum(a,d=>d.gap);
     const visits=sum(a,d=>d.visits.length), checks=sum(a,d=>d.checks.length);
     const hops=Math.max(visits-a.length,0);
+    const ds=dsByInsp[k]||{forfeited:0,abandoned:0};
     return {name:k,days:a.length,span,site,trav,gap,visits,checks,
       avgSpan:span/a.length, avgVisit:visits?site/visits:0, avgHop:hops?trav/hops:null,
-      util:span?Math.round(site/span*100):0};
+      util:span?Math.round(site/span*100):0,
+      forfeited:ds.forfeited, abandoned:ds.abandoned};
   }).sort((a,b)=>b.days-a.days);
 
   $('#content').innerHTML = `<div class="kpi-row">
     <div class="kpi"><div class="num">${days.length}</div><div class="label">ימי עבודה</div>
       <div class="sub">${Object.keys(byInsp).length} מפקחים</div></div>
-    <div class="kpi"><div class="num">${fmtHM(avgSpan)}</div><div class="label">אורך יום ממוצע</div>
-      <div class="sub">מהשיגור הראשון לדיווח האחרון</div></div>
+    <div class="kpi ${expH && avgSpan < expH*3600000*0.8 ? 'warn' : ''}">
+      <div class="num">${fmtHM(avgSpan)}</div><div class="label">אורך יום ממוצע</div>
+      <div class="sub">${expH ? 'מצופה ' + expH + ' שעות · ' + pct(avgSpan, expH*3600000) + '%'
+                              : 'מהשיגור הראשון לדיווח האחרון'}</div></div>
     <div class="kpi ok"><div class="num">${fmtHM(avgSite)}</div><div class="label">זמן במוסדות</div>
       <div class="sub">${pct(avgSite,avgSpan)}% מהיום</div></div>
     <div class="kpi warn"><div class="num">${fmtHM(avgTrav)}</div><div class="label">נסיעה בין מוסדות</div>
@@ -908,10 +991,13 @@ function renderTime(){
       <div class="sub">${pct(avgGap,avgSpan)}% — הפסקות וזמן מת</div></div>
   </div>
   <div class="panel"><h3>סיכום לפי מפקח
-      <span class="note">ניצול = זמן במוסדות חלקי אורך היום · לחץ לפירוט יומי</span></h3>
+      <span class="note">ניצול = זמן במוסדות חלקי אורך היום · ויתור = יעד ששוחרר לפני הגעה ·
+        ננטש = יעד שנפתח ופקע בלי הגעה${expH ? ' · אורך יום מצופה: ' + expH + ' שעות' : ''} ·
+        לחץ לפירוט יומי</span></h3>
     <div class="body" style="overflow-x:auto"><table><thead><tr>
       <th>מפקח</th><th>ימים</th><th>ביקורים</th><th>בדיקות</th><th>אורך יום</th>
       <th>שהייה במוסד</th><th>נסיעה בין מוסדות</th><th>לא מוסבר ליום</th><th>ניצול</th>
+      <th>ויתורים</th><th>ננטשו</th>
     </tr></thead><tbody>${rows.map(r=>`<tr class="clickable" data-drill="inspDays" data-v="${esc(r.name)}">
       <td>${esc(r.name)}${roleTag(r.name)}</td><td class="num-cell">${r.days}</td>
       <td class="num-cell">${r.visits}</td><td class="num-cell">${r.checks}</td>
@@ -920,6 +1006,8 @@ function renderTime(){
       <td class="num-cell">${fmtHM(r.avgHop)}</td>
       <td class="num-cell">${fmtHM(r.gap/r.days)}</td>
       <td class="num-cell" style="color:${r.util<40?'var(--danger)':r.util>70?'var(--success)':'inherit'}">${r.util}%</td>
+      <td class="num-cell">${r.forfeited||'—'}</td>
+      <td class="num-cell" style="color:${r.abandoned?'var(--danger)':'inherit'}">${r.abandoned||'—'}</td>
     </tr>`).join('')}</tbody></table></div></div>`
   + daysPanel(days.slice(0,50));
 }
@@ -1351,8 +1439,19 @@ async function removeUser(i){
 async function toggleAuth(on){
   if(on && !confirm('להדליק אימות סיסמה?\n\nמרגע זה כל המפקחים יידרשו להזין שם משתמש וסיסמה.'))
     return;
+  /* ממצא 23: הכיבוי התבצע בלחיצה אחת, בלי אישור ובלי תיעוד — והוא
+     המסוכן מבין השניים: הוא פותח את פעולות השטח לכל מי שמכיר מזהה
+     מפקח. השרת דורש את המחרוזת המדויקת, ולכן זו אינה הגנת ממשק. */
+  let confirmText='';
+  if(!on){
+    confirmText=prompt('כיבוי אימות הסיסמה\n\n' +
+      'מרגע זה כל מי שמכיר מזהה מפקח יוכל לקבל יעדים ולדווח, בלי סיסמה.\n' +
+      'פעולות ההנהלה יישארו מוגנות.\n\n' +
+      'להמשך הקלד: כבה אימות');
+    if(confirmText===null) return;
+  }
   try{
-    const r=await apiPost({action:'setauth', value: on?'true':'false'});
+    const r=await apiPost({action:'setauth', value: on?'true':'false', confirm: confirmText});
     if(!r.ok) throw new Error(r.error);
     invalidateUsers(); await refreshUsers();
     flash(on?'האימות הודלק':'האימות כובה');
