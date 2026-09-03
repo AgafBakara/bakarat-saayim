@@ -1168,6 +1168,15 @@ async function load(){
       (T.work_days_counts ? ' (' + T.work_days_counts + ')' : '') +
       ' — סינון ימי העבודה אינו פועל על השאר; אפס פירושו שהוא מת');
 
+    /* **ממצא 5 (ביקורת חיצונית).** עמודת "ימי עבודה" בעברית היא
+       גם הכותרת הטבעית ל*מספר* ימי העבודה בשבוע. ערך בן ספרה
+       אחת בכל שורה פירושו שהעמודה כנראה מונה, והסינון מוציא
+       סייעים מהדגימה בשגגה בשישה מתוך שבעה ימים. */
+    const wdSingle = T.work_days_single_pct;
+    const wdShape = wdSingle !== null && wdSingle !== undefined && wdSingle > 60;
+    if(wdShape) bits.push('⚠ ' + wdSingle + '% מערכי ימי העבודה הם ספרה אחת — ' +
+      'ייתכן שהעמודה היא מספר ימים בשבוע ולא קבוצת ימים; הסינון מוציא סייעים בשגגה');
+
     /* תאי תאריך שלא ניתן לפרש. שורה כזו נעלמת מכל השוואה —
        אינה נספרת, אינה מוצלבת, ואינה מפילה דבר. */
     if(T.bad_dates) bits.push('⚠ תאי תאריך שאינם קריאים: ' + T.bad_dates +
@@ -1202,7 +1211,7 @@ async function load(){
         ' — ראיה שלא נשלחה קיימת רק על המכשיר');
     }
     $('#hidden-note').innerHTML = bits.join(' · ');
-    const bad = idBad || wwBad || wdBad || !!T.bad_dates || trigBad;
+    const bad = idBad || wwBad || wdBad || wdShape || !!T.bad_dates || trigBad;
     $('#hidden-note').style.color = (!T.auth_on || bad) ? 'var(--danger)' : '';
     $('#hidden-note').style.fontWeight = bad ? '700' : '';
     render();
@@ -1330,7 +1339,7 @@ function drillChecks(title, sub, list){
   const nf=list.filter(c=>c.presence==='not_found').length;
   openModal(title, sub, [
     {n:list.length,l:'בדיקות'},{n:f,l:'חריגות'},{n:r,l:'לבדיקה חוזרת'},
-    {n:nf,l:'לא נמצא'},{n:new Set(list.map(c=>c.assistant)).size,l:'סייעים'},
+    {n:nf,l:'לא נמצא'},{n:new Set(list.map(c=>nid(c.aid)||c.assistant)).size,l:'סייעים'},
     {n:new Set(list.map(c=>c.institution)).size,l:'מוסדות'}
   ], checksTable(list));
 }
@@ -1351,7 +1360,7 @@ function renderBase(){
   const I=state.data.institutions.filter(i=>i.active), R=state.data.roster, T=state.data.totals||{};
   const boys=I.filter(i=>i.kind==='M').length, girls=I.filter(i=>i.kind==='F').length;
   const noGeo=I.filter(i=>!i.geo).length;
-  const people=new Set(R.map(r=>r.aid)).size;
+  const people=new Set(R.map(r=>nid(r.aid)).filter(Boolean)).size;
   const students=new Set(R.filter(r=>r.student).map(r=>r.student)).size;
 
   W.instAll=I; W.rosterAll=R;
@@ -1468,8 +1477,14 @@ function renderResults(){
     return;
   }
   const flags=C.filter(c=>c.verdict==='flag'), reviews=C.filter(c=>c.verdict==='review');
-  const people=new Set(R.map(r=>r.aid)).size;
-  const covered=new Set(C.map(c=>c.assistant)).size;
+  /* **ממצא 7 (ביקורת חיצונית).** המונה נספר לפי **שם** והמכנה
+     לפי **מזהה**: שתי סייעות באותו שם התמזגו במונה, ושינוי כתיב
+     ברוסטר פיצל את המכנה — בשני הכיוונים הכיסוי מוצג נמוך
+     מהאמת. זהו ה-KPI הראשי שלפיו מחליטים אם הכיסוי מספיק.
+     סבב ממצא 15 העביר את groupBy, coverageData, assistantPanel
+     ו-recheckPanel ל-nid() והשאיר את שורת ה-KPI. */
+  const people=new Set(R.map(r=>nid(r.aid)).filter(Boolean)).size;
+  const covered=new Set(C.map(c=>nid(c.aid)||c.assistant).filter(Boolean)).size;
   const visits=new Set(C.map(c=>c.inspector+'|'+c.date+'|'+c.institution)).size;
 
   $('#content').innerHTML = `<div class="kpi-row">
