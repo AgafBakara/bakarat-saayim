@@ -2,6 +2,11 @@
 <html lang="he" dir="rtl">
 <head>
 <meta charset="UTF-8">
+<!-- A7: אין כאן ספרייה חיצונית פרט לגופן. ה-CSP סוגר טעינת קוד
+     מכל מקור, ומגביל את היעדים שאליהם הדף יכול לשלוח נתונים
+     ל-Apps Script בלבד. 'unsafe-inline' נדרש כי כל הקוד כאן
+     inline מכוונה — אין תהליך בנייה ואין nonce. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data:; connect-src https://script.google.com https://script.googleusercontent.com; font-src https://fonts.gstatic.com data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1">
 <meta name="theme-color" content="#2b8c7e">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -660,7 +665,9 @@ const state = {
      ווייפיי של בית ספר עם שער כניסה הוא "מקוון" ואינו מגיע
      לשומקום. sendFailed נקבע לפי מה שקרה בפועל בשליחה, והוא
      מה שהתווית מציגה. */
-  sendFailed: false
+  sendFailed: false,
+  /* ממצא 20': דיווחים שהשרת דחה דחייה שאינה סופית. נפרד מכשל רשת. */
+  stuck: 0
 };
 
 /* ═══════════════════════════════════════════════════════════
@@ -739,13 +746,18 @@ function dbDel(id) {
    אסור לשמור אותם במטמון המכשיר — אחרת המפקח
    יכול לקרוא את היעד ואת שם הסייע לפני שהגיע.
    ═══════════════════════════════════════════════════════════ */
+/* **A5:** `apiGet` הרכיב `token` ו-`inspector` במחרוזת השאילתה.
+   כתובות `fetch` אינן נכנסות להיסטוריה ואינן נשלחות כ-Referer,
+   ולכן זה לא ״טוקן בהיסטוריה״; מה שכן: הכתובת המלאה נרשמת בצד
+   גוגל, נחשפת לכל proxy שמפענח TLS — נפוץ ברשתות עירוניות —
+   ונשמרת בכל HAR.
+
+   מה שנשאר כאן: `mode` ו-`inspectors`, שתיהן בלי זהות. כל
+   פעולה מאומתת עוברת ב-POST. */
 async function apiGet(action, params = {}) {
   const qs = new URLSearchParams({
     action,
     key: CONFIG.ACCESS_KEY || '',
-    token: state.token || '',
-    inspector: (state.inspector && state.inspector.id) || '',
-    queue_pending: String((state.queue || []).length),
     ...params
   }).toString();
   const res = await fetch(`${CONFIG.API_URL}?${qs}`);
@@ -794,7 +806,7 @@ async function apiPost(payload) {
 /* ── שיגור יעד ─────────────────────────────────────────── */
 async function getAssignment() {
   if (!CONFIG.DEMO_MODE) {
-    const r = await apiGet('assign', { inspector: state.inspector.id });
+    const r = await apiPost({ action: 'assign', inspector: state.inspector.id });
     if (!r.ok) throw new Error(r.error);
     return r.data;
   }
@@ -978,7 +990,7 @@ async function restoreSession() {
   state.token = saved.t;
 
   let r;
-  try { r = await apiGet('whoami'); }
+  try { r = await apiPost({ action: 'whoami' }); }
   catch (e) { state.token = null; return false; }   // אין רשת — מסך כניסה
 
   if (r.ok) {
@@ -1172,7 +1184,13 @@ async function requestAssignment() {
       return;
     }
     clearDispatchMsg();
-    state.assignment = { institution: inst, dispatchTime: Date.now() };
+    /* **ממצא 19':** שיגור שהוחזר (`resumed`) נושא זמן שיגור מוקדם
+       יותר, והטיימר התחיל מאפס. הראיה עצמה תקינה — השרת דורס את
+       `seconds_dispatch_to_arrival` מ-`asg.dispatch_time` — רק
+       התצוגה שיקרה, ומפקח שחזר לאפליקציה ראה נסיעה של דקה. */
+    const dt = inst.dispatch_time ? new Date(inst.dispatch_time).getTime() : NaN;
+    state.assignment = { institution: inst,
+                         dispatchTime: isFinite(dt) ? dt : Date.now() };
     state.arrival = null;
     renderAssignment();
     showScreen('assign');
@@ -1654,6 +1672,7 @@ async function queueRecord(meta) {
     verified_by:        a.verify || '',
     verified_name:      $('#q4-text')?.value.trim() || '',
     notes:              $('#q5-text')?.value.trim() || '',
+    reason:             (a.abort_reason || '').slice(0, 300),   // ביטול דיווח — חובה בשרת
     verdict:            meta.verdict,
     close_time:         nowISO(),   // מכשיר — השרת דורס
     seconds_dispatch_to_arrival: state.arrival ? Math.round((state.arrival.time - state.assignment.dispatchTime) / 1000) : '',
@@ -1688,6 +1707,7 @@ async function flushQueue() {
   if (Date.now() < _nextFlushAt) return null;
   _flushing = true;
   let last = null, rejected = 0, stuck = 0;
+  state.stuck = 0;
   try {
     const items = (await dbAll()).filter(it => !it.rejected);
     for (const it of items) {
@@ -1713,7 +1733,12 @@ async function flushQueue() {
         await dbDel(it.local_id);
       } catch (e) { state.sendFailed = true; break; }
     }
-    if (stuck) state.sendFailed = true;
+    /* **ממצא 20':** `stuck` הוא דחייה מהשרת שאינה `permanent` —
+       השרת **ענה**, והתשובה הייתה דחייה. `sendFailed` הדליק את
+       התווית ״אין קשר לשרת״, שהפנתה את המפקח לחפש בעיית רשת
+       שאינה קיימת והסתירה את הסיבה האמיתית. שני המצבים נפרדים
+       עכשיו, ולכל אחד תווית משלו. */
+    state.stuck = stuck;
     /* דיווח שנדחה בעבר וטרם הגיע להסגר — למשל כי הרשת נפלה
        באותו רגע — מנסה שוב בכל מחזור. */
     for (const it of (await dbAll()).filter(x => x.rejected && !x.quarantined))
@@ -1724,7 +1749,8 @@ async function flushQueue() {
     state.rejected = all.filter(it => it.rejected);
     updateSyncPill();
     if (rejected) toast(rejected + ' דיווחים נדחו על ידי השרת — ראה ״דיווחים שנדחו״', 'error');
-    else if (stuck) toast(stuck + ' דיווחים ממתינים לשליחה חוזרת', 'warn');
+    else if (stuck) toast(stuck + ' דיווחים נדחו על ידי השרת ונתקעו. ' +
+                          'זו אינה בעיית רשת — פנה למנהל.', 'warn');
   } catch (e) {
     state.sendFailed = true;          // חריגת רשת — הבקשה לא הגיעה לשרת
     updateSyncPill();
@@ -1780,6 +1806,9 @@ function updateSyncPill() {
   if (!state.online) return setSync('offline', 'לא מקוון');
   if (state.queue.length && state.sendFailed)
     return setSync('offline', state.queue.length + ' ממתינים · אין קשר לשרת');
+  /* השרת ענה ודחה. זו אינה בעיית רשת, ואין מה לחכות לה. */
+  if (state.stuck)
+    return setSync('pending', state.stuck + ' דיווחים נתקעו · פנה למנהל');
   if (state.queue.length) return setSync('pending', state.queue.length + ' ממתינים');
   if (state.rejected.length) return setSync('pending', state.rejected.length + ' נדחו');
   setSync('', 'מקוון');
