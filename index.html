@@ -542,7 +542,6 @@ textarea.form-input { min-height: 84px; resize: vertical; line-height: 1.5; }
 const CONFIG = {
   API_URL: 'https://script.google.com/macros/s/AKfycby_m54KMPtMeNNlikGUYpCPTRRgWMDQy-3EfsVF0CkwIvmlIk1PaQljq1lJwDmYYk3J/exec',
   DEMO_MODE: false,
-  ACCESS_KEY: 'bb2026-K7fQm3xR9wLpZ4nT',               // ← העתק מגיליון ההגדרות
   VERSION: '2.1-B',           // מוצגת במסך הכניסה — לזיהוי הקובץ שהועלה בפועל
   CACHE_PREFIX: 'sayaControl_v1_',
   GEOFENCE_METERS: 75,          // רדיוס אישור הגעה
@@ -772,7 +771,6 @@ function dbDel(id) {
 async function apiGet(action, params = {}) {
   const qs = new URLSearchParams({
     action,
-    key: CONFIG.ACCESS_KEY || '',
     ...params
   }).toString();
   const res = await fetch(`${CONFIG.API_URL}?${qs}`);
@@ -801,7 +799,6 @@ function sessionGuard_(r) {
   return r;
 }
 async function apiPost(payload) {
-  payload.key = CONFIG.ACCESS_KEY || '';
   if (state.token) payload.token = state.token;
   if (state.inspector && !payload.inspector) payload.inspector = state.inspector.id;
   /* עומק התור נוסע כנוסע חופשי על כל בקשה. השרת כותב אותו רק

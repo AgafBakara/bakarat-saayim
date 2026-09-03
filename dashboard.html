@@ -1007,7 +1007,6 @@ tr.clickable td:first-child::after{content:'‹';color:var(--text-muted);margin-
 
 const CONFIG = {
   API_URL: 'https://script.google.com/macros/s/AKfycby_m54KMPtMeNNlikGUYpCPTRRgWMDQy-3EfsVF0CkwIvmlIk1PaQljq1lJwDmYYk3J/exec',
-  ACCESS_KEY: 'bb2026-K7fQm3xR9wLpZ4nT'            // ← העתק מגיליון ההגדרות
 };
 
 /* סיווג מוסד — לא מסווגים מדגם קטן מדי */
@@ -1059,7 +1058,6 @@ const RECTYPE_LABEL = { check:'בדיקה', access_blocked:'סורבה כניס�
 
 /* ═══ API ═══ */
 async function apiPost(payload){
-  payload.key = CONFIG.ACCESS_KEY;
   if(state.token) payload.token = state.token;
   if(state.inspectorId) payload.inspector = state.inspectorId;   // מי מבקש
   const r = await fetch(CONFIG.API_URL,{method:'POST',body:JSON.stringify(payload),
@@ -1076,7 +1074,7 @@ async function apiPost(payload){
    `apiGet` אינו נושא עוד זהות, ומשמש רק ל-`mode`. כל פעולה
    מאומתת עוברת ב-POST, שבו הזהות בגוף הבקשה. */
 async function apiGet(action, params={}){
-  const qs = new URLSearchParams({action, key:CONFIG.ACCESS_KEY, ...params});
+  const qs = new URLSearchParams({action, ...params});
   const r = await fetch(CONFIG.API_URL + '?' + qs);
   return r.json();
 }
