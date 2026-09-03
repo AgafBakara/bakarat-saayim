@@ -680,7 +680,9 @@ const state = {
      מה שהתווית מציגה. */
   sendFailed: false,
   /* ממצא 20': דיווחים שהשרת דחה דחייה שאינה סופית. נפרד מכשל רשת. */
-  stuck: 0
+  stuck: 0,
+  /* ממצא 1 (ביקורת 4): שניות שהשרת ביקש להמתין. נפרד משניהם. */
+  throttled: 0
 };
 
 /* ═══════════════════════════════════════════════════════════
@@ -1719,7 +1721,7 @@ async function flushQueue() {
   // השהיה גוברת מול שרת שאינו עונה: 30 שניות ועד 5 דקות
   if (Date.now() < _nextFlushAt) return null;
   _flushing = true;
-  let last = null, rejected = 0, stuck = 0;
+  let last = null, rejected = 0, stuck = 0, throttled = 0;
   state.stuck = 0;
   try {
     const items = (await dbAll()).filter(it => !it.rejected);
@@ -1735,6 +1737,13 @@ async function flushQueue() {
             await dbReject(it.local_id, r.error);
             await sendToQuarantine(it, r.error);
             rejected++;
+          } else if (r.retry_after) {
+            /* **ממצא 1 (ביקורת 4).** מגביל קצב בשרת. זו אינה
+               תקלה ואינה דחייה: הדיווחים בתור, והשרת אמר כמה
+               להמתין. ממתינים, ולא מסמנים ״נתקע · פנה למנהל״ —
+               אין למי לפנות, וזה חולף מעצמו. */
+            throttled = Math.max(throttled, Number(r.retry_after) || 0);
+            break;
           } else {
             stuck++;
           }
@@ -1752,6 +1761,7 @@ async function flushQueue() {
        שאינה קיימת והסתירה את הסיבה האמיתית. שני המצבים נפרדים
        עכשיו, ולכל אחד תווית משלו. */
     state.stuck = stuck;
+    state.throttled = throttled;
     /* דיווח שנדחה בעבר וטרם הגיע להסגר — למשל כי הרשת נפלה
        באותו רגע — מנסה שוב בכל מחזור. */
     for (const it of (await dbAll()).filter(x => x.rejected && !x.quarantined))
@@ -1762,6 +1772,7 @@ async function flushQueue() {
     state.rejected = all.filter(it => it.rejected);
     updateSyncPill();
     if (rejected) toast(rejected + ' דיווחים נדחו על ידי השרת — ראה ״דיווחים שנדחו״', 'error');
+    else if (throttled) toast('השרת עמוס. הדיווחים בתור וימשיכו להישלח מעצמם.', 'warn');
     else if (stuck) toast(stuck + ' דיווחים נדחו על ידי השרת ונתקעו. ' +
                           'זו אינה בעיית רשת — פנה למנהל.', 'warn');
   } catch (e) {
@@ -1770,7 +1781,8 @@ async function flushQueue() {
   } finally {
     _flushing = false;
     _backoffMs = state.sendFailed ? Math.min(_backoffMs * 2 || 60000, 300000) : 0;
-    _nextFlushAt = Date.now() + _backoffMs;
+    /* השרת אמר כמה להמתין — מכבדים אותו במקום להלום. */
+    _nextFlushAt = Date.now() + Math.max(_backoffMs, throttled * 1000);
   }
   return last;
 }
@@ -1819,6 +1831,9 @@ function updateSyncPill() {
   if (!state.online) return setSync('offline', 'לא מקוון');
   if (state.queue.length && state.sendFailed)
     return setSync('offline', state.queue.length + ' ממתינים · אין קשר לשרת');
+  /* מגביל קצב — הדיווחים בתור והשליחה תימשך מעצמה. */
+  if (state.throttled)
+    return setSync('pending', state.queue.length + ' ממתינים · השרת עמוס');
   /* השרת ענה ודחה. זו אינה בעיית רשת, ואין מה לחכות לה. */
   if (state.stuck)
     return setSync('pending', state.stuck + ' דיווחים נתקעו · פנה למנהל');

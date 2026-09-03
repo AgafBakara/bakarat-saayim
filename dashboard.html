@@ -1158,6 +1158,16 @@ async function load(){
       (T.work_window_counts ? ' (' + T.work_window_counts + ')' : '') +
       ' — סינון חלון העבודה אינו פועל על השאר');
 
+    /* **ממצא 6 (ביקורת 4).** work_window_pct הוא 100% במבנה:
+       הסנכרון דוחה שורה בלי שעות, ולכן הוא מודד את מה שהכותב
+       כבר מבטיח. work_days הוא השדה שאבד בממצא 2׳ ושבהיעדרו
+       סינון הימים משתתק — וזה מה שצריך למדוד. */
+    const wdBad = T.work_days_pct !== null && T.work_days_pct !== undefined &&
+                  T.work_days_pct < 80;
+    if(wdBad) bits.push('⚠ ימי עבודה ברוסטר: ' + T.work_days_pct + '%' +
+      (T.work_days_counts ? ' (' + T.work_days_counts + ')' : '') +
+      ' — סינון ימי העבודה אינו פועל על השאר; אפס פירושו שהוא מת');
+
     /* תאי תאריך שלא ניתן לפרש. שורה כזו נעלמת מכל השוואה —
        אינה נספרת, אינה מוצלבת, ואינה מפילה דבר. */
     if(T.bad_dates) bits.push('⚠ תאי תאריך שאינם קריאים: ' + T.bad_dates +
@@ -1192,7 +1202,7 @@ async function load(){
         ' — ראיה שלא נשלחה קיימת רק על המכשיר');
     }
     $('#hidden-note').innerHTML = bits.join(' · ');
-    const bad = idBad || wwBad || !!T.bad_dates || trigBad;
+    const bad = idBad || wwBad || wdBad || !!T.bad_dates || trigBad;
     $('#hidden-note').style.color = (!T.auth_on || bad) ? 'var(--danger)' : '';
     $('#hidden-note').style.fontWeight = bad ? '700' : '';
     render();
