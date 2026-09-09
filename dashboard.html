@@ -1197,6 +1197,17 @@ async function load(){
       ' מזהי סייע מופיעים עם שני שמות שונים — סייע אחד עלול להיבדק ' +
       'במקום אחר. בדוק את לשונית ״התנגשויות זהות״');
 
+    /* **רשימת ההחרגות היא זמנית, ואין לה תאריך תפוגה בקוד.**
+       מזהה ששוכחים להוציא ממנה הוא סייע/ת שלא ייבדק לעולם —
+       בשקט. האזהרה דולקת כל עוד היא אינה ריקה, ולכן היא
+       מזכירה את עצמה בכל פתיחה של הדשבורד. */
+    const exIds = T.excluded_ids || 0;
+    const exBad = exIds > 0;
+    if(exBad) bits.push('⚠ ' + exIds + ' מזהי סייע ברשימת ההחרגות' +
+      (T.excluded_rows ? ' — ' + T.excluded_rows + ' שורות דולגו בסנכרון האחרון' : '') +
+      '. הם אינם נכנסים למסגרת הדגימה ולא ייבדקו. ' +
+      'בדוק את לשונית ״סייעים מוחרגים״');
+
     /* שורות שנכתבו בלי חלון עבודה: סינון השעות אינו חל עליהן. */
     const nwRows = T.no_window_rows || 0;
     const nwBad = nwRows > 0;
@@ -1262,7 +1273,7 @@ async function load(){
     }
     $('#hidden-note').innerHTML = bits.join(' · ');
     const bad = idBad || wwBad || wdBad || wdShape || !!T.bad_dates || trigBad ||
-                symBad || siteBad || geoBad || aliasBad || confBad || nwBad;
+                symBad || siteBad || geoBad || aliasBad || confBad || nwBad || exBad;
     $('#hidden-note').style.color = (!T.auth_on || bad) ? 'var(--danger)' : '';
     $('#hidden-note').style.fontWeight = bad ? '700' : '';
     render();
