@@ -1197,6 +1197,17 @@ async function load(){
       ' מזהי סייע מופיעים עם שני שמות שונים — סייע אחד עלול להיבדק ' +
       'במקום אחר. בדוק את לשונית ״התנגשויות זהות״');
 
+    /* **ממצאי הקצאה שלא נראו.** הדוח נכתב ללשונית ואיש לא
+       ראה אותו. החותמת מסומנת בידי מי שמסתכל, ולכן האזהרה
+       אינה מתאפסת ברענון — היא ממתינה עד שמישהו יכריז שראה. */
+    const A = T.alloc || {};
+    const allocBad = (A.unseen || 0) > 0;
+    if(allocBad) bits.push('⚠ ' + A.unseen + ' ממצאי הקצאה חדשים מאז שהסתכלת: ' +
+      [(A.over_hours ? A.over_hours + ' חריגות שעות' : ''),
+       (A.many_inst ? A.many_inst + ' סייעים בכמה מוסדות' : ''),
+       (A.two_types ? A.two_types + ' עם שני סוגי תקן' : '')]
+        .filter(Boolean).join(' · ') + '. ראה לשונית ״הקצאה״');
+
     /* **סמל כפול בלשונית המוסדות מוציא מוסד מההגרלה בשקט.**
        המפה נבנית בהשמה פשוטה, ולכן השורה האחרונה דורסת. אם
        היא זו שאין לה קואורדינטה, שורות הרוסטר נקשרות אליה,
@@ -1286,7 +1297,7 @@ async function load(){
     }
     $('#hidden-note').innerHTML = bits.join(' · ');
     const bad = idBad || wwBad || wdBad || wdShape || !!T.bad_dates || trigBad ||
-                symBad || siteBad || geoBad || aliasBad || confBad || nwBad || exBad || dupBad;
+                symBad || siteBad || geoBad || aliasBad || confBad || nwBad || exBad || dupBad || allocBad;
     $('#hidden-note').style.color = (!T.auth_on || bad) ? 'var(--danger)' : '';
     $('#hidden-note').style.fontWeight = bad ? '700' : '';
     render();
@@ -1307,6 +1318,20 @@ function openModal(title, sub, kpis, html){
 /* ממצא 11: הערך נקרא מ-dataset ולא מוזרק לתוך מחרוזת JS בתוך HTML.
    esc() ממיר גרש ל-&#39;, ומפענח ה-HTML היה מחזיר אותו לגרש לפני
    שה-JS נקרא — כך ששם עם גרש שבר את השורה, ושם זדוני הריץ קוד. */
+/* ״סמן שראיתי״ — החותמת נשלטת בידי מי שמסתכל ואינה נכתבת
+   ברענון. אחרת ״חדש מאז שהסתכלת״ היה מתאפס בכל טעינה ולעולם
+   לא היה מתריע. */
+document.addEventListener('click', async e => {
+  if (e.target && e.target.id === 'alloc-seen') {
+    e.target.disabled = true;
+    try {
+      await apiPost({ action: 'allocseen' });
+      await load();
+    } catch (err) { e.target.disabled = false; }
+    return;
+  }
+});
+
 document.addEventListener('click', e => {
   const tr = e.target.closest('[data-drill]');
   if (!tr) return;
@@ -1320,12 +1345,43 @@ document.addEventListener('click', e => {
     case 'type':       return drillType(v);
     case 'month':      return drillMonth(v);
     case 'assistant':  return drillAssistant(v);
+    case 'alloc':      return drillAlloc(v);
     case 'inspDays':   return drillInspDays(v);
     case 'dossier':    return openDossier(tr.dataset.kind, tr.dataset.id);
     case 'day':        return drillDay(Number(tr.dataset.i));
     case 'dayF':       return drillDayF(Number(tr.dataset.i));
   }
 });
+
+/* **מסנן לפי מזהה ולא לפי שם.** שני סייעים בעלי אותו שם היו
+   מתמזגים לחלון אחד — אותה תקלה שכבר תוקנה ב-recheckPanel. */
+function drillAlloc(aid){
+  const A = (state.data && state.data.totals && state.data.totals.alloc) || {};
+  const hits = (A.rows || []).filter(r => r.aid === aid);
+  if(!hits.length) return;
+  const head = hits[0];
+  /* **הרוסטר בתשובה מסונן לפעילים ומנורמל ב-aid** — אותו
+     מרחב מפתחות שהממצא נושא. סינון לפי שם היה מאחד שני
+     סייעים בעלי אותו שם. */
+  const rows = ((state.data && state.data.roster) || [])
+    .filter(r => r.aid === aid);
+  const body = rows.length
+    ? '<table class="tbl"><thead><tr><th>מוסד</th><th>מגזר</th>'
+      + '<th>סוג תקן</th><th>תלמיד</th></tr></thead><tbody>'
+      + rows.map(r => '<tr><td>' + esc(r.institution || '') + '</td>'
+        + '<td>' + esc(r.kind || '') + '</td>'
+        + '<td>' + esc(r.atype || '') + '</td>'
+        + '<td>' + esc(r.student || '') + '</td></tr>').join('')
+      + '</tbody></table>'
+    : '<p class="muted">אין שורות רוסטר פעילות בתשובה. הפירוט המלא ' +
+      'בלשונית ״בקרת הקצאה״.</p>';
+  openModal(head.name, hits.map(h => h.kind).join(' · '),
+    [{ n: head.hours, l: 'סך ש"ש' },
+     { n: head.institutions, l: 'מוסדות' },
+     { n: head.rows_in_roster, l: 'שורות ברוסטר' }],
+    '<p class="muted">' + esc(hits.map(h => h.detail).join(' · ')) + '</p>'
+    + '<p class="muted small">' + esc(head.inst_names || '') + '</p>' + body);
+}
 
 function closeModal(){ $('#modal-bg').classList.remove('show'); }
 document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeModal(); });
@@ -1577,6 +1633,7 @@ function renderResults(){
   + '<div class="grid2">'+inspectorPanel(C)+institutionResultPanel(C,I)+'</div>'
   + '<div class="grid2">'+activityPanel(C)+typePanel(C)+'</div>'
   + '<div class="grid2">'+trendPanel(C)+recheckPanel(C)+'</div>'
+  + allocPanel(C)
   + blockedPanel()
   + abortedPanel()
   + gpsFailedPanel()
@@ -1706,6 +1763,46 @@ function drillMonth(m){
 }
 
 /* ביקורות חוזרות — האם אחרי ממצא בוצעה בדיקה נוספת, ומה קרה בה */
+/* בקרת הקצאה. **שאלות על ההקצאה ולא על הנוכחות** — נענות
+   מהרוסטר לבדו, ולכן אפשר לראות אותן לפני שמתחילים בקרות.
+   ממצא כאן אינו האשמה: שיבוץ בשני מוסדות הוא דבר שבשגרה. */
+function allocPanel(C){
+  const A = (C.totals && C.totals.alloc) || {};
+  const rows = A.rows || [];
+  if(!rows.length) return '<div class="card"><h3>בקרת הקצאה</h3>'
+    + '<p class="muted">לא הופק דוח. הרץ ״בקרת הקצאה״ מתפריט הגיליון.</p></div>';
+
+  const byKind = {};
+  rows.forEach(r => { (byKind[r.kind] = byKind[r.kind] || []).push(r); });
+  const ORDER = ['חריגת שעות', 'ריבוי מוסדות', 'שני סוגי תקן'];
+  const kinds = ORDER.filter(k => byKind[k]).concat(
+    Object.keys(byKind).filter(k => ORDER.indexOf(k) === -1));
+
+  const secs = kinds.map(k => {
+    const list = byKind[k].slice().sort((a,b) =>
+      (b.hours - a.hours) || (b.institutions - a.institutions));
+    return '<tr class="sec"><td colspan="5">' + esc(k) + ' — ' + list.length + '</td></tr>'
+      + list.map(r => '<tr class="clickable" data-drill="alloc" data-v="' + esc(r.aid) + '">'
+        + '<td>' + esc(r.name) + '</td>'
+        + '<td>' + esc(r.types) + '</td>'
+        + '<td class="num">' + r.hours + '</td>'
+        + '<td class="num">' + r.institutions + '</td>'
+        + '<td class="muted">' + esc(r.detail) + '</td></tr>').join('');
+  }).join('');
+
+  const stamp = A.run_at ? 'הופק ' + esc(String(A.run_at).slice(0,16).replace('T',' ')) : '';
+  const unseen = (A.unseen || 0) > 0
+    ? '<button class="btn small" id="alloc-seen">סמן שראיתי</button>' : '';
+  return '<div class="card"><h3>בקרת הקצאה ' +
+    '<span class="muted small">' + stamp + '</span> ' + unseen + '</h3>'
+    + '<p class="muted small">שאלות על ההקצאה, לא על הנוכחות. ממצא כאן אינו ' +
+      'האשמה — שיבוץ בשני מוסדות הוא דבר שבשגרה. לחיצה על שורה ' +
+      'מציגה את שורות הרוסטר שמאחוריה.</p>'
+    + '<table class="tbl"><thead><tr><th>סייע</th><th>סוגי תקן</th>'
+    + '<th class="num">סך ש"ש</th><th class="num">מוסדות</th><th>פירוט</th>'
+    + '</tr></thead><tbody>' + secs + '</tbody></table></div>';
+}
+
 function recheckPanel(C){
   const byA=groupBy(C,c=>nid(c.aid)||c.assistant);
   const rows=[];
