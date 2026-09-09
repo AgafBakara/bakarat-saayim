@@ -1197,6 +1197,19 @@ async function load(){
       ' מזהי סייע מופיעים עם שני שמות שונים — סייע אחד עלול להיבדק ' +
       'במקום אחר. בדוק את לשונית ״התנגשויות זהות״');
 
+    /* **סמל כפול בלשונית המוסדות מוציא מוסד מההגרלה בשקט.**
+       המפה נבנית בהשמה פשוטה, ולכן השורה האחרונה דורסת. אם
+       היא זו שאין לה קואורדינטה, שורות הרוסטר נקשרות אליה,
+       המוסד נופל ממסנן הקואורדינטות, וכל הסייעים שלו יוצאים
+       מהדגימה בלי שאיש רואה. */
+    const dupSym = T.dup_symbols || 0;
+    const dupSite = T.dup_sites || 0;
+    const dupBad = dupSym > 0 || dupSite > 0;
+    if(dupSym) bits.push('⚠ ' + dupSym + ' סמלי מוסד מופיעים יותר מפעם אחת — ' +
+      'השורה האחרונה דורסת, ואם אין בה קואורדינטה המוסד לא ייבדק. ' +
+      'הרץ ״כפילויות סמל ואתר״');
+    if(dupSite) bits.push('⚠ ' + dupSite + ' מזהי אתר כפולים בלשונית האתרים');
+
     /* **רשימת ההחרגות היא זמנית, ואין לה תאריך תפוגה בקוד.**
        מזהה ששוכחים להוציא ממנה הוא סייע/ת שלא ייבדק לעולם —
        בשקט. האזהרה דולקת כל עוד היא אינה ריקה, ולכן היא
@@ -1273,7 +1286,7 @@ async function load(){
     }
     $('#hidden-note').innerHTML = bits.join(' · ');
     const bad = idBad || wwBad || wdBad || wdShape || !!T.bad_dates || trigBad ||
-                symBad || siteBad || geoBad || aliasBad || confBad || nwBad || exBad;
+                symBad || siteBad || geoBad || aliasBad || confBad || nwBad || exBad || dupBad;
     $('#hidden-note').style.color = (!T.auth_on || bad) ? 'var(--danger)' : '';
     $('#hidden-note').style.fontWeight = bad ? '700' : '';
     render();
