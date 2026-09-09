@@ -1185,6 +1185,48 @@ async function load(){
         'הן נדחו ואינן בדגימה' +
         (T.unknown_type_values ? '. ערכים: ' + T.unknown_type_values : ''));
 
+    /* **סמל שאינו במוסדות ואינו בנרדפים.** זה הדבר שאסור שייבלע:
+       השורה נדחית, איש אינו פותח את לשונית הדחיות, ומוסד שלם
+       אינו נבדק — לא סייעת בודדת. */
+    /* **התנגשות זהות — אזהרה, לא חסימה.** הבדלי כתיב, סדר
+       מילים והבדל של אות אחת אינם נספרים; מה שנספר הוא שוני
+       אמיתי, ואז שתי סייעות חולקות מזהה ואחת מהן תיבדק במקום
+       השנייה. ההכרעה אנושית, ולכן הייבוא ממשיך והשורה כאן. */
+    const confBad = (T.id_name_conflicts || 0) > 0;
+    if(confBad) bits.push('⚠ ' + T.id_name_conflicts +
+      ' מזהי סייע מופיעים עם שני שמות שונים — סייע אחד עלול להיבדק ' +
+      'במקום אחר. בדוק את לשונית ״התנגשויות זהות״');
+
+    /* שורות שנכתבו בלי חלון עבודה: סינון השעות אינו חל עליהן. */
+    const nwRows = T.no_window_rows || 0;
+    const nwBad = nwRows > 0;
+    if(nwBad) bits.push('⚠ ' + nwRows + ' שורות רוסטר בלי שעות עבודה — ' +
+      'סינון חלון העבודה אינו חל עליהן, והן נכנסות לדגימה בכל שעה');
+
+    const unkSym = T.unknown_symbol_rows;
+    const symBad = unkSym !== null && unkSym !== undefined && unkSym > 0;
+    if(symBad)
+      bits.push('⚠ ' + unkSym + ' שורות עם סמל מוסד שאינו בלשונית המוסדות ' +
+        'ואינו בקודים נרדפים — המוסד לא ייבדק' +
+        (T.unknown_symbol_values ? '. ערכים: ' + T.unknown_symbol_values : ''));
+
+    /* מוסד בלי אתר נשען על העמודות של עצמו; אתר בלי קואורדינטה
+       מפיל את **כל** המוסדות שיושבים בו מבריכת ההגרלה בבת אחת. */
+    const noSite = T.inst_no_site || 0;
+    const siteBad = (T.sites_total || 0) > 0 && noSite > 0;
+    if(siteBad) bits.push('⚠ ' + noSite + ' מוסדות פעילים בלי site_id — ' +
+      'הכתובת שלהם עדיין מהעמודות הישנות');
+    const geoBad = (T.sites_no_geo || 0) > 0;
+    if(geoBad) bits.push('⚠ ' + T.sites_no_geo + ' אתרים בלי קואורדינטה — ' +
+      'כל המוסדות שבהם מחוץ להגרלה. הרץ geocodeSites');
+
+    /* רשימת הנרדפים היא היחידה שנאכפת בזמן ריצה. תקלה בה
+       מתגלגלת ישירות לשיגור. */
+    const aliasBad = !!(T.alias_cycles || T.alias_dangling);
+    if(T.alias_cycles) bits.push('⚠ מעגל בקודים נרדפים: ' + esc(T.alias_cycles));
+    if(T.alias_dangling) bits.push('⚠ קוד נרדף שמפנה לסמל שאינו במוסדות: ' +
+      esc(T.alias_dangling));
+
     /* תאי תאריך שלא ניתן לפרש. שורה כזו נעלמת מכל השוואה —
        אינה נספרת, אינה מוצלבת, ואינה מפילה דבר. */
     if(T.bad_dates) bits.push('⚠ תאי תאריך שאינם קריאים: ' + T.bad_dates +
@@ -1219,7 +1261,8 @@ async function load(){
         ' — ראיה שלא נשלחה קיימת רק על המכשיר');
     }
     $('#hidden-note').innerHTML = bits.join(' · ');
-    const bad = idBad || wwBad || wdBad || wdShape || !!T.bad_dates || trigBad;
+    const bad = idBad || wwBad || wdBad || wdShape || !!T.bad_dates || trigBad ||
+                symBad || siteBad || geoBad || aliasBad || confBad || nwBad;
     $('#hidden-note').style.color = (!T.auth_on || bad) ? 'var(--danger)' : '';
     $('#hidden-note').style.fontWeight = bad ? '700' : '';
     render();
