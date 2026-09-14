@@ -1091,17 +1091,42 @@ function errHtml_(e){
     'background:rgba(0,0,0,.04);padding:8px;border-radius:6px">' +
     esc(e.snippet || '(תשובה ריקה)') + '</div>' +
     '<div style="margin-top:8px;font-size:13px">' +
-    esc('זהו דף של גוגל ולא של המערכת — בדרך כלל חריגה מזמן ריצה ' +
-        'או חניקה. נסה שוב בעוד רגע; אם זה חוזר, שלח את הטקסט הזה.') +
+    esc(e.exhausted
+      ? 'זהו דף של גוגל ולא של המערכת. הדשבורד ניסה ' + e.attempts + ' פעמים. ' +
+        'הפעולה כנראה בוצעה בשרת — רענן לפני שתנסה שוב; אם זה חוזר, שלח את הטקסט הזה.'
+      : 'זהו דף של גוגל ולא של המערכת. נסה שוב בעוד רגע; אם זה חוזר, שלח את הטקסט הזה.') +
     '</div>';
+}
+
+/* **חזרה אוטומטית על תשובה שאינה JSON — גלויה.** נמדד ב-14.9.2026:
+   שכבת ההגשה של גוגל מאבדת כ-20% מהתשובות בעוד הקוד בשרת מסיים
+   בהצלחה. הדשבורד קורא בעיקר, ולכן החזרה חסרת סיכון; פעולות
+   הניהול (`setuser`, `quarantinerelease`…) אידמפוטנטיות ממילא.
+   אותו מנגנון כמו באפליקציה. */
+const RETRY_ = { attempts: 3, delays: [3000, 6000] };
+function sleep_(ms){ return new Promise(r=>setTimeout(r,ms)); }
+async function withRetry_(doFetch){
+  for(let n=1;;n++){
+    try{
+      const j = await readBody_(await doFetch());
+      if(n>1) flash('התקבל בניסיון '+n+' מתוך '+RETRY_.attempts);
+      return j;
+    }catch(e){
+      if(!(e && e.badResponse)) throw e;
+      console.log('תשובה שאינה JSON, ניסיון '+n+': '+(e.snippet||''));
+      if(n>=RETRY_.attempts){ e.exhausted = true; e.attempts = n; throw e; }
+      const wait = RETRY_.delays[n-1];
+      flash('השרת ענה דף שגיאה במקום תשובה · מנסה שוב… ניסיון '+(n+1)+' מתוך '+RETRY_.attempts, true, wait+20000);
+      await sleep_(wait);
+    }
+  }
 }
 
 async function apiPost(payload){
   if(state.token) payload.token = state.token;
   if(state.inspectorId) payload.inspector = state.inspectorId;   // מי מבקש
-  const r = await fetch(CONFIG.API_URL,{method:'POST',body:JSON.stringify(payload),
-    headers:{'Content-Type':'text/plain;charset=utf-8'}});
-  return readBody_(r);
+  return withRetry_(() => fetch(CONFIG.API_URL,{method:'POST',body:JSON.stringify(payload),
+    headers:{'Content-Type':'text/plain;charset=utf-8'}}));
 }
 /* **A5:** `apiGet` הרכיב `key`, `token` ו-`inspector` במחרוזת
    השאילתה, ו-`dashboard` ו-`users` עברו בו — כלומר **טוקן של
@@ -1114,8 +1139,7 @@ async function apiPost(payload){
    מאומתת עוברת ב-POST, שבו הזהות בגוף הבקשה. */
 async function apiGet(action, params={}){
   const qs = new URLSearchParams({action, ...params});
-  const r = await fetch(CONFIG.API_URL + '?' + qs);
-  return readBody_(r);
+  return withRetry_(() => fetch(CONFIG.API_URL + '?' + qs));
 }
 
 /* ═══ התחברות ═══ */
@@ -3039,14 +3063,14 @@ async function toggleAuth(on){
   }catch(e){ flash('שגיאה: '+e.message, true); }
 }
 
-function flash(msg, bad){
+function flash(msg, bad, ms){
   let el=$('#flash');
   if(!el._init){ el._init=1; }
   el.textContent=msg;
   el.style.cssText='position:fixed;bottom:24px;right:50%;transform:translateX(50%);z-index:950;'+
     'padding:12px 22px;border-radius:999px;font-size:14.5px;font-weight:600;color:#fff;'+
     'box-shadow:var(--shadow-lg);background:'+(bad?'var(--danger)':'var(--success)');
-  clearTimeout(el._t); el._t=setTimeout(()=>{ el.style.display='none'; },3000);
+  clearTimeout(el._t); el._t=setTimeout(()=>{ el.style.display='none'; }, ms||3000);
   el.style.display='block';
 }
 

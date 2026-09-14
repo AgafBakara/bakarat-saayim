@@ -173,6 +173,10 @@ input, textarea, select { font-family: inherit; font-size: inherit; }
 .detail-header .inst-name { font-size: 21px; font-weight: 700; color: var(--navy); line-height: 1.3; }
 .detail-header .inst-addr { font-size: 15px; color: var(--text); margin-top: 6px; }
 .detail-header .inst-id { font-size: 12px; color: var(--text-muted); margin-top: 6px; font-variant-numeric: tabular-nums; }
+/* ״יש כאן עוד N מוסדות״ — מידע למפקח, לא ניתוב. */
+.detail-header .same-site { margin-top: 10px; padding: 8px 12px; border-radius: 10px;
+  background: var(--surface); border: 1.5px dashed var(--border); font-size: 13px;
+  color: var(--text-muted); line-height: 1.5; text-align: right; }
 .type-badge {
   display: inline-block; margin-top: 10px; padding: 4px 12px; border-radius: 999px;
   font-size: 13px; font-weight: 600; background: var(--navy-light); color: var(--navy);
@@ -423,6 +427,7 @@ textarea.form-input { min-height: 84px; resize: vertical; line-height: 1.5; }
       <div class="inst-addr" id="as-addr">—</div>
       <div class="inst-id" id="as-id">—</div>
       <div class="type-badge" id="as-type">—</div>
+      <div class="same-site" id="as-same-site" style="display:none"></div>
     </div>
     <div class="card">
       <div class="card-label">📍 מיקום</div>
@@ -543,7 +548,7 @@ textarea.form-input { min-height: 84px; resize: vertical; line-height: 1.5; }
 const CONFIG = {
   API_URL: 'https://script.google.com/macros/s/AKfycby_m54KMPtMeNNlikGUYpCPTRRgWMDQy-3EfsVF0CkwIvmlIk1PaQljq1lJwDmYYk3J/exec',
   DEMO_MODE: false,
-  VERSION: '2.1-B',           // מוצגת במסך הכניסה — לזיהוי הקובץ שהועלה בפועל
+  VERSION: '2.2',             // מוצגת במסך הכניסה — לזיהוי הקובץ שהועלה בפועל
   CACHE_PREFIX: 'sayaControl_v1_',
   GEOFENCE_METERS: 75,          // רדיוס אישור הגעה
   GPS_MIN_ACCURACY: 30,         // דיוק גרוע מזה = חסימה
@@ -796,13 +801,60 @@ async function readBody_(res) {
   }
 }
 
+/**
+ * **חזרה אוטומטית על תשובה שאינה JSON — גלויה, ועם האמת בסוף.**
+ *
+ * נמדד ב-14.9.2026: שכבת ההגשה של גוגל (`script.googleusercontent.com`)
+ * החזירה 404 ״לא ניתן לפתוח את הקובץ כרגע״ בכ-20% מהבקשות, בעוד
+ * הקוד בשרת סיים בהצלחה בכולן (`_ms` תקין, התשובה נבנתה). כלומר
+ * **הפעולה בוצעה, והתשובה אבדה בדרך.** שעה שלמה של בדיקות שטח
+ * הושבתה ככה: ״קבל יעד״ נכשל, השיגור נוצר, והיעד ״הישן״ חזר.
+ *
+ * החזרה בטוחה כי כל פעולות השטח אידמפוטנטיות: `save` מזהה כפילות
+ * לפי `local_id`, `assign` מחזיר `resumed`, `reveal` מחזיר
+ * `reissued`. היא **גלויה** — מפקח שממתין 15 שניות רואה שמשהו
+ * קורה — וכשהיא ממוצה ההודעה אומרת את האמת: הפעולה כנראה בוצעה
+ * בשרת, ויש לרענן לפני ניסיון נוסף. לא ״נכשל״.
+ *
+ * חוזרים **רק** על תשובה שאינה JSON. חריגת רשת נשארת כמו שהייתה:
+ * שם הבקשה לא הגיעה, והתור כבר מטפל בזה.
+ */
+const RETRY_ = { attempts: 3, delays: [3000, 6000] };
+function sleep_(ms) { return new Promise(r => setTimeout(r, ms)); }
+async function withRetry_(doFetch) {
+  for (let n = 1; ; n++) {
+    try {
+      const j = await readBody_(await doFetch());
+      if (n > 1) toast('התקבל בניסיון ' + n + ' מתוך ' + RETRY_.attempts, 'success');
+      return j;
+    } catch (e) {
+      if (!(e && e.badResponse)) throw e;
+      state.badResponse = { at: Date.now(), status: e.status,
+                            snippet: e.snippet || '', attempt: n };
+      console.log('תשובה שאינה JSON, ניסיון ' + n + ': ' + (e.snippet || ''));
+      if (n >= RETRY_.attempts) {
+        const err = new Error(
+          'השרת לא החזיר תשובה תקינה ב-' + n + ' ניסיונות. ' +
+          'הפעולה כנראה בוצעה בשרת — רענן את המסך לפני שתנסה שוב.');
+        err.badResponse = true; err.exhausted = true;
+        err.status = e.status; err.snippet = e.snippet;
+        throw err;
+      }
+      const wait = RETRY_.delays[n - 1];
+      toast('השרת ענה דף שגיאה במקום תשובה · מנסה שוב… ' +
+            'ניסיון ' + (n + 1) + ' מתוך ' + RETRY_.attempts, '', wait + 20000);
+      await sleep_(wait);
+    }
+  }
+}
+
 async function apiGet(action, params = {}) {
   const qs = new URLSearchParams({
     action,
     ...params
   }).toString();
-  const res = await fetch(`${CONFIG.API_URL}?${qs}`);
-  return sessionGuard_(await readBody_(res));
+  const j = await withRetry_(() => fetch(`${CONFIG.API_URL}?${qs}`));
+  return sessionGuard_(j);
 }
 
 /**
@@ -833,11 +885,10 @@ async function apiPost(payload) {
      מכשיר. בלי זה דיווח שלא נשלח אינו קיים לאיש מלבד המפקח. */
   if (payload.queue_pending === undefined && state.queue)
     payload.queue_pending = state.queue.length;
-  const res = await fetch(CONFIG.API_URL, {
+  const j = await withRetry_(() => fetch(CONFIG.API_URL, {
     method: 'POST', body: JSON.stringify(payload),
     headers: { 'Content-Type': 'text/plain;charset=utf-8' }
-  });
-  const j = await readBody_(res);
+  }));
   return payload.action === 'login' ? j : sessionGuard_(j);
 }
 
@@ -942,12 +993,15 @@ function showScreen(n) {
   $('#screen-' + n).classList.add('active');
   window.scrollTo(0, 0);
 }
-function toast(msg, type = '') {
+/* הודעה ארוכה נשארת יותר זמן — ״רענן לפני שתנסה שוב״ ב-2.8 שניות
+   אינה נקראת. `ms` מפורש למי שצריך להחזיק את ההודעה עד אירוע. */
+function toast(msg, type = '', ms) {
   const t = $('#toast');
   t.textContent = msg;
   t.className = 'toast show ' + type;
   clearTimeout(t._t);
-  t._t = setTimeout(() => t.className = 'toast ' + type, 2800);
+  const hold = ms || Math.max(2800, Math.min(9000, String(msg).length * 70));
+  t._t = setTimeout(() => t.className = 'toast ' + type, hold);
 }
 function setSync(status, text) {
   const p = $('#sync-pill');
@@ -967,8 +1021,10 @@ function showBadResponse_() {
   alert('השרת ענה תשובה שאינה JSON' + '\n' +
         'שעה: ' + when + '   ·   HTTP ' + (b.status || '?') + '\n\n' +
         'מה שהתקבל בפועל:' + '\n' + (b.snippet || '(ריק)') + '\n\n' +
-        'זהו דף של גוגל ולא של המערכת — בדרך כלל חריגה מזמן ריצה ' +
-        'או חניקה.' + '\n' +
+        'זהו דף של גוגל ולא של המערכת. נמדד: שכבת ההגשה של גוגל ' +
+        'מאבדת כ-20% מהתשובות בעוד הפעולה בשרת מסתיימת בהצלחה.' + '\n' +
+        'האפליקציה מנסה שוב ' + RETRY_.attempts + ' פעמים מעצמה' +
+        (b.attempt ? ' (הפעם: ניסיון ' + b.attempt + ')' : '') + '.' + '\n' +
         'הדיווחים שלך נשמרו במכשיר ויישלחו שוב מעצמם.');
 }
 function pad(n) { return String(n).padStart(2, '0'); }
@@ -1267,6 +1323,20 @@ function renderAssignment() {
   if (i.hop_m) {
     $('#as-id').textContent += '  ·  ' +
       (i.hop_m > 1000 ? (i.hop_m/1000).toFixed(1) + ' ק״מ ממך' : i.hop_m + ' מ׳ ממך');
+  }
+  /* **״יש כאן עוד N מוסדות״ — המפקח מחליט.** השרת מונה מוסדות
+     באותו אתר שעדיין ניתנים לבדיקה היום. ההגרלה אינה משתנה: היא
+     מעדיפה יעד קרוב אבל אינה מבטיחה, ואומרים זאת. חסר בשיגור
+     שהוחזר (`resumed`) — השרת אינו מחשב אותו שם. */
+  const ss = $('#as-same-site');
+  if (ss) {
+    const others = Array.isArray(i.same_site) ? i.same_site.filter(Boolean) : [];
+    if (others.length) {
+      ss.textContent = '🏢 באתר הזה יש עוד ' + others.length +
+        (others.length === 1 ? ' מוסד שטרם נבדק היום: ' : ' מוסדות שטרם נבדקו היום: ') +
+        others.join(', ') + '. כשתסיים כאן, ״קבל יעד״ מעדיף יעד קרוב — אך אינו מבטיח.';
+      ss.style.display = '';
+    } else { ss.textContent = ''; ss.style.display = 'none'; }
   }
 }
 
