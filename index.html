@@ -678,6 +678,7 @@ const state = {
      לשומקום. sendFailed נקבע לפי מה שקרה בפועל בשליחה, והוא
      מה שהתווית מציגה. */
   sendFailed: false,
+  badResponse: null,
   /* ממצא 20': דיווחים שהשרת דחה דחייה שאינה סופית. נפרד מכשל רשת. */
   stuck: 0,
   /* ממצא 1 (ביקורת 4): שניות שהשרת ביקש להמתין. נפרד משניהם. */
@@ -768,14 +769,39 @@ function dbDel(id) {
 
    מה שנשאר כאן: `mode` ו-`inspectors`, שתיהן בלי זהות. כל
    פעולה מאומתת עוברת ב-POST. */
+/**
+ * קריאת גוף התשובה. **`res.json()` זורק כשהשרת מחזיר HTML**,
+ * והחריגה הזו נבלעה ב-catch שמדליק ״אין קשר לשרת״ — התווית
+ * ששולחת את המפקח לחפש בעיית רשת שאינה קיימת.
+ *
+ * Apps Script מחזיר דף HTML במקום JSON כשההרצה חרגה מזמן,
+ * כשנגמרה מכסה, כשהפריסה אינה מורשית, וכשגוגל מחזירה מסך
+ * ביניים. בכל אלה **השרת ענה** — והדיווח נשאר בתור לנצח
+ * בלי שאיש יודע למה.
+ *
+ * אותה משפחה בדיוק כמו ההפרדה בין `stuck` ל-`sendFailed`.
+ */
+async function readBody_(res) {
+  const txt = await res.text();
+  try { return JSON.parse(txt); }
+  catch (e) {
+    const err = new Error('תשובה שאינה JSON מהשרת (HTTP ' + res.status + ')');
+    err.badResponse = true;
+    err.status = res.status;
+    /* קטע קצר לאבחון. **אינו מוצג למפקח** — הוא עלול להכיל
+       תוכן שרת שלם — אלא נשמר להצגה למנהל ולקונסול. */
+    err.snippet = String(txt || '').replace(/\s+/g, ' ').slice(0, 300);
+    throw err;
+  }
+}
+
 async function apiGet(action, params = {}) {
   const qs = new URLSearchParams({
     action,
     ...params
   }).toString();
   const res = await fetch(`${CONFIG.API_URL}?${qs}`);
-  if (!res.ok) throw new Error('HTTP ' + res.status);
-  return sessionGuard_(await res.json());
+  return sessionGuard_(await readBody_(res));
 }
 
 /**
@@ -810,8 +836,7 @@ async function apiPost(payload) {
     method: 'POST', body: JSON.stringify(payload),
     headers: { 'Content-Type': 'text/plain;charset=utf-8' }
   });
-  if (!res.ok) throw new Error('HTTP ' + res.status);
-  const j = await res.json();
+  const j = await readBody_(res);
   return payload.action === 'login' ? j : sessionGuard_(j);
 }
 
@@ -1749,8 +1774,22 @@ async function flushQueue() {
         }
         last = r.data;
         state.sendFailed = false;     // הגיע לשרת והתקבל
+        state.badResponse = null;
         await dbDel(it.local_id);
-      } catch (e) { state.sendFailed = true; break; }
+      } catch (e) {
+        /* **תשובה שאינה JSON אינה כשל רשת.** השרת ענה, ולכן
+           ״אין קשר לשרת״ שגוי ומטעה. הדיווח נשאר בתור בשני
+           המקרים — ראיה שנאספה בשטח אינה נמחקת — אבל התווית
+           אומרת מה קרה. */
+        if (e && e.badResponse) {
+          state.badResponse = { at: Date.now(), status: e.status,
+                                snippet: e.snippet || '' };
+          console.log('תשובה שאינה JSON: ' + (e.snippet || ''));
+        } else {
+          state.sendFailed = true;
+        }
+        break;
+      }
     }
     /* **ממצא 20':** `stuck` הוא דחייה מהשרת שאינה `permanent` —
        השרת **ענה**, והתשובה הייתה דחייה. `sendFailed` הדליק את
@@ -1773,7 +1812,13 @@ async function flushQueue() {
     else if (stuck) toast(stuck + ' דיווחים נדחו על ידי השרת ונתקעו. ' +
                           'זו אינה בעיית רשת — פנה למנהל.', 'warn');
   } catch (e) {
-    state.sendFailed = true;          // חריגת רשת — הבקשה לא הגיעה לשרת
+    if (e && e.badResponse) {
+      state.badResponse = { at: Date.now(), status: e.status,
+                            snippet: e.snippet || '' };
+      console.log('תשובה שאינה JSON: ' + (e.snippet || ''));
+    } else {
+      state.sendFailed = true;        // חריגת רשת — הבקשה לא הגיעה לשרת
+    }
     updateSyncPill();
   } finally {
     _flushing = false;
@@ -1826,6 +1871,11 @@ async function dbReject(local_id, reason) {
    לסגור את האפליקציה ולחשוב שהדיווח נמסר. */
 function updateSyncPill() {
   if (!state.online) return setSync('offline', 'לא מקוון');
+  /* **תשובה שאינה JSON קודמת לתווית הרשת** — היא מדויקת
+     יותר, והיא זו שמפנה לפעולה הנכונה. */
+  if (state.queue.length && state.badResponse)
+    return setSync('offline', state.queue.length +
+      ' ממתינים · השרת ענה תשובה שאינה תקינה — פנה למנהל');
   if (state.queue.length && state.sendFailed)
     return setSync('offline', state.queue.length + ' ממתינים · אין קשר לשרת');
   /* מגביל קצב — הדיווחים בתור והשליחה תימשך מעצמה. */
