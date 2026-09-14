@@ -436,7 +436,7 @@ textarea.form-input { min-height: 84px; resize: vertical; line-height: 1.5; }
     <div style="text-align:center;margin-top:14px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
       <button class="header-btn" style="background:var(--surface);color:var(--text-muted);border:1.5px solid var(--border)" onclick="reportBlocked()">לא ניתן להגיע / סורבה כניסה</button>
       <button class="header-btn" style="background:var(--surface);color:var(--text-muted);border:1.5px solid var(--border)" onclick="forfeitTarget()">ויתור על היעד</button>
-      <button class="header-btn" style="background:var(--surface);color:var(--danger);border:1.5px solid var(--danger)" onclick="releaseStuck()">בטל את היעד הנוכחי</button>
+      <button class="header-btn" id="btn-release" style="display:none;background:var(--surface);color:var(--danger);border:1.5px solid var(--danger)" onclick="releaseStuck()">בטל את היעד הנוכחי</button>
     </div>
   </div>
 </section>
@@ -953,6 +953,23 @@ function setSync(status, text) {
   const p = $('#sync-pill');
   p.className = 'sync-pill ' + status;
   $('#sync-text').textContent = text;
+  /* **התווית אומרת מה קרה; הלחיצה אומרת מה השרת ענה.**
+     בטלפון אין קונסול, ולכן קטע התשובה נשאר בלתי נגיש —
+     והאבחון עוצר סבב שלם על ״תגיד לי מה כתוב שם״. */
+  p.style.cursor = state.badResponse ? 'pointer' : '';
+  p.onclick = state.badResponse ? showBadResponse_ : null;
+}
+
+function showBadResponse_() {
+  const b = state.badResponse;
+  if (!b) return;
+  const when = new Date(b.at).toLocaleTimeString('he-IL');
+  alert('השרת ענה תשובה שאינה JSON' + '\n' +
+        'שעה: ' + when + '   ·   HTTP ' + (b.status || '?') + '\n\n' +
+        'מה שהתקבל בפועל:' + '\n' + (b.snippet || '(ריק)') + '\n\n' +
+        'זהו דף של גוגל ולא של המערכת — בדרך כלל חריגה מזמן ריצה ' +
+        'או חניקה.' + '\n' +
+        'הדיווחים שלך נשמרו במכשיר ויישלחו שוב מעצמם.');
 }
 function pad(n) { return String(n).padStart(2, '0'); }
 function fmtDur(ms) {
@@ -1360,12 +1377,47 @@ async function confirmArrival() {
  * כאן השרת מוצא את השיגור הפתוח בעצמו, ולכן זה עובד גם כשמצב
  * הלקוח אבד לגמרי.
  */
+/* כמה דקות שיגור חייב להיות פתוח לפני שניתן לבטלו. **השרת
+   אוכף בכל מקרה** — ההסתרה כאן היא כדי שהכפתור לא יפתה, ולא
+   הגנה. אותו עיקרון כמו הסתרת לשונית בדשבורד. */
+function releaseWaitMin_() {
+  const inst = state.assignment && state.assignment.institution;
+  const v = Number(inst && inst.release_after_min);
+  return isFinite(v) && v >= 0 ? v : 20;
+}
+function assignmentOpenMinutes_() {
+  const t = state.assignment && state.assignment.institution &&
+            state.assignment.institution.dispatch_time;
+  if (!t) return 0;
+  const ms = Date.now() - new Date(t).getTime();
+  return isFinite(ms) ? ms / 60000 : 0;
+}
+function refreshReleaseBtn_() {
+  const b = document.getElementById('btn-release');
+  if (!b) return;
+  const show = !!state.assignment && !state.arrival &&
+               assignmentOpenMinutes_() >= releaseWaitMin_();
+  b.style.display = show ? '' : 'none';
+}
+
 async function releaseStuck() {
+  const mins = releaseWaitMin_(), openMin = assignmentOpenMinutes_();
+  if (openMin < mins) {
+    toast('ניתן לבטל רק אחרי ' + mins + ' דקות. נותרו ' +
+          Math.max(Math.ceil(mins - openMin), 1) + '. ' +
+          'אם אינך יכול להגיע — ״ויתור על היעד״.', 'warn');
+    return;
+  }
   if (!confirm('לבטל את היעד הנוכחי?\n\n' +
       'השיגור ייסגר בשרת ותוכל לקבל יעד חדש. ' +
-      'לא תיווצר רשומת בדיקה, והשורה תישאר בגיליון מסומנת כשוחררה.'))
+      'לא תיווצר רשומת בדיקה, והשורה תישאר בגיליון מסומנת כשוחררה, ' +
+      'המוסד יודר ממך להיום, והביטול ייספר בדשבורד.'))
     return;
-  const reason = prompt('סיבה קצרה (רשות):', 'שיגור תקוע') || '';
+  const reason = prompt('מה קרה? (חובה, לפחות 4 תווים)', '') || '';
+  if (reason.trim().length < 4) {
+    toast('חובה לציין סיבה — לפחות 4 תווים', 'error');
+    return;
+  }
   try {
     const r = await apiPost({ action: 'releaseassignment', reason: reason });
     if (!r.ok) throw new Error(r.error);
@@ -1906,7 +1958,7 @@ function updateSyncPill() {
      יותר, והיא זו שמפנה לפעולה הנכונה. */
   if (state.queue.length && state.badResponse)
     return setSync('offline', state.queue.length +
-      ' ממתינים · השרת ענה תשובה שאינה תקינה — פנה למנהל');
+      ' ממתינים · השרת ענה תשובה שאינה תקינה — הקש לפרטים');
   if (state.queue.length && state.sendFailed)
     return setSync('offline', state.queue.length + ' ממתינים · אין קשר לשרת');
   /* מגביל קצב — הדיווחים בתור והשליחה תימשך מעצמה. */
@@ -1996,7 +2048,9 @@ function abortCheck() {
 const timers = [];
 function startTimer(sel, getStart) {
   const el = $(sel);
-  const id = setInterval(() => { el.textContent = fmtDur(Date.now() - getStart()); }, 1000);
+  const id = setInterval(() => { el.textContent = fmtDur(Date.now() - getStart());
+    /* הכפתור מופיע מעצמו כשההמתנה חלפה, בלי רענון. */
+    try { refreshReleaseBtn_(); } catch (e) {} }, 1000);
   el.textContent = '00:00';
   timers.push(id);
 }

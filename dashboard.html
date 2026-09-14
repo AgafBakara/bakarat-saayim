@@ -1057,12 +1057,51 @@ const RECTYPE_LABEL = { check:'בדיקה', access_blocked:'סורבה כניס�
                         gps_failed:'כשל אימות מיקום', aborted:'דיווח בוטל' };
 
 /* ═══ API ═══ */
+/**
+ * **`r.json()` זורק כשהשרת מחזיר HTML**, והשגיאה שהמשתמש ראה
+ * הייתה `Unexpected token '<'` — הודעה של המנוע, לא של המערכת.
+ * היא אינה אומרת מה השרת ענה ולא מה לעשות.
+ *
+ * כאן קוראים טקסט, מנסים לפרש, וכשזה נכשל **שומרים את מה
+ * שהתקבל בפועל** ומציגים אותו. אותו תיקון כבר נעשה באפליקציה.
+ */
+async function readBody_(res){
+  const txt = await res.text();
+  try { return JSON.parse(txt); }
+  catch(e){
+    const err = new Error('השרת החזיר תשובה שאינה JSON');
+    err.badResponse = true;
+    err.status = res.status;
+    err.snippet = String(txt||'').replace(/s+/g,' ').slice(0,400);
+    err.title = (String(txt||'').match(/<title>([^<]*)<\/title>/)||[])[1] || '';
+    throw err;
+  }
+}
+
+/* הודעה שאומרת מה קרה, לא ״לא ניתן לטעון״. */
+function errHtml_(e){
+  if(!e || !e.badResponse)
+    return '<div class="ic">⚠</div>' + esc((e && e.message) || 'שגיאה');
+  return '<div class="ic">⚠</div>' +
+    '<div style="font-weight:600;margin-bottom:6px">' +
+    esc('השרת ענה תשובה שאינה JSON (HTTP ' + e.status + ')') + '</div>' +
+    (e.title ? '<div style="margin-bottom:6px">' + esc(e.title) + '</div>' : '') +
+    '<div style="font-size:12px;opacity:.75;direction:ltr;text-align:left;' +
+    'white-space:pre-wrap;word-break:break-all;max-height:140px;overflow:auto;' +
+    'background:rgba(0,0,0,.04);padding:8px;border-radius:6px">' +
+    esc(e.snippet || '(תשובה ריקה)') + '</div>' +
+    '<div style="margin-top:8px;font-size:13px">' +
+    esc('זהו דף של גוגל ולא של המערכת — בדרך כלל חריגה מזמן ריצה ' +
+        'או חניקה. נסה שוב בעוד רגע; אם זה חוזר, שלח את הטקסט הזה.') +
+    '</div>';
+}
+
 async function apiPost(payload){
   if(state.token) payload.token = state.token;
   if(state.inspectorId) payload.inspector = state.inspectorId;   // מי מבקש
   const r = await fetch(CONFIG.API_URL,{method:'POST',body:JSON.stringify(payload),
     headers:{'Content-Type':'text/plain;charset=utf-8'}});
-  return r.json();
+  return readBody_(r);
 }
 /* **A5:** `apiGet` הרכיב `key`, `token` ו-`inspector` במחרוזת
    השאילתה, ו-`dashboard` ו-`users` עברו בו — כלומר **טוקן של
@@ -1076,7 +1115,7 @@ async function apiPost(payload){
 async function apiGet(action, params={}){
   const qs = new URLSearchParams({action, ...params});
   const r = await fetch(CONFIG.API_URL + '?' + qs);
-  return r.json();
+  return readBody_(r);
 }
 
 /* ═══ התחברות ═══ */
@@ -1302,7 +1341,7 @@ async function load(){
     $('#hidden-note').style.fontWeight = bad ? '700' : '';
     render();
   }catch(e){
-    $('#content').innerHTML='<div class="panel"><div class="empty"><div class="ic">⚠</div>'+esc(e.message)+'</div></div>';
+    $('#content').innerHTML='<div class="panel"><div class="empty">'+errHtml_(e)+'</div></div>';
   }
 }
 
@@ -2016,8 +2055,9 @@ function renderTime(){
   const dsByInsp={};
   DS.forEach(d=>{
     const k=d.name||d.id;
-    const a=dsByInsp[k]||(dsByInsp[k]={forfeited:0,abandoned:0,total:0});
-    a.forfeited+=d.forfeited||0; a.abandoned+=d.abandoned||0; a.total+=d.total||0;
+    const a=dsByInsp[k]||(dsByInsp[k]={forfeited:0,released:0,abandoned:0,total:0});
+    a.forfeited+=d.forfeited||0; a.released+=d.released||0;
+    a.abandoned+=d.abandoned||0; a.total+=d.total||0;
   });
 
   const byInsp=group(days,'inspector');
@@ -2027,14 +2067,14 @@ function renderTime(){
           trav=sum(a,d=>d.travel), gap=sum(a,d=>d.gap);
     const visits=sum(a,d=>d.visits.length), checks=sum(a,d=>d.checks.length);
     const hops=Math.max(visits-a.length,0);
-    const ds=dsByInsp[k]||{forfeited:0,abandoned:0};
+    const ds=dsByInsp[k]||{forfeited:0,released:0,abandoned:0};
     /* המזהה, ולא השם, הוא מה שפותח תיק. שני מפקחים בעלי אותו שם
        היו פותחים את אותו תיק. */
     const sid=(state.data.staff||[]).filter(x=>x.name===k)[0];
     return {name:k,id:sid?sid.id:'',days:a.length,span,site,trav,gap,visits,checks,
       avgSpan:span/a.length, avgVisit:visits?site/visits:0, avgHop:hops?trav/hops:null,
       util:span?Math.round(site/span*100):0,
-      forfeited:ds.forfeited, abandoned:ds.abandoned};
+      forfeited:ds.forfeited, released:ds.released, abandoned:ds.abandoned};
   }).sort((a,b)=>b.days-a.days);
 
   $('#content').innerHTML = `<div class="kpi-row">
@@ -2053,13 +2093,13 @@ function renderTime(){
       <div class="sub">${pct(avgGap,avgSpan)}% — הפסקות וזמן מת</div></div>
   </div>
   <div class="panel"><h3>סיכום לפי מפקח
-      <span class="note">ניצול = זמן במוסדות חלקי אורך היום · ויתור = יעד ששוחרר לפני הגעה ·
+      <span class="note">ניצול = זמן במוסדות חלקי אורך היום · ויתור = יעד ששוחרר לפני הגעה · ביטול = שיגור שנסגר ידנית אחרי המתנה ·
         ננטש = יעד שנפתח ופקע בלי הגעה${expH ? ' · אורך יום מצופה: ' + expH + ' שעות' : ''} ·
         לחץ לפירוט יומי</span></h3>
     <div class="body" style="overflow-x:auto"><table><thead><tr>
       <th>מפקח</th><th>ימים</th><th>ביקורים</th><th>בדיקות</th><th>אורך יום</th>
       <th>שהייה במוסד</th><th>נסיעה בין מוסדות</th><th>לא מוסבר ליום</th><th>ניצול</th>
-      <th>ויתורים</th><th>ננטשו</th><th></th>
+      <th>ויתורים</th><th>ביטולים</th><th>ננטשו</th><th></th>
     </tr></thead><tbody>${rows.map(r=>`<tr class="clickable" data-drill="inspDays" data-v="${esc(r.name)}">
       <td>${esc(r.name)}${roleTag(r.name)}</td><td class="num-cell">${r.days}</td>
       <td class="num-cell">${r.visits}</td><td class="num-cell">${r.checks}</td>
@@ -2069,6 +2109,7 @@ function renderTime(){
       <td class="num-cell">${fmtHM(r.gap/r.days)}</td>
       <td class="num-cell" style="color:${r.util<40?'var(--danger)':r.util>70?'var(--success)':'inherit'}">${r.util}%</td>
       <td class="num-cell">${r.forfeited||'—'}</td>
+      <td class="num-cell" style="color:${r.released?'var(--warn)':'inherit'}">${r.released||'—'}</td>
       <td class="num-cell" style="color:${r.abandoned?'var(--danger)':'inherit'}">${r.abandoned||'—'}</td>
       <td>${r.id?dossierBtn('inspector', r.id):''}</td>
     </tr>`).join('')}</tbody></table></div></div>`
@@ -2318,7 +2359,7 @@ async function openDossier(kind, id){
     if(!r.ok) throw new Error(r.error);
     drawDossier(r.data);
   }catch(e){
-    $('#modal-body').innerHTML='<div class="empty"><div class="ic">⚠</div>'+esc(e.message)+'</div>';
+    $('#modal-body').innerHTML='<div class="empty">'+errHtml_(e)+'</div>';
   }
 }
 
@@ -2756,7 +2797,7 @@ async function refreshUsers(){
     drawUsers();
   }catch(e){
     W.users=null;
-    $('#content').innerHTML='<div class="panel"><div class="empty"><div class="ic">⚠</div>'+esc(e.message)+'</div></div>';
+    $('#content').innerHTML='<div class="panel"><div class="empty">'+errHtml_(e)+'</div></div>';
   }
 }
 
