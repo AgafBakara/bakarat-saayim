@@ -436,6 +436,7 @@ textarea.form-input { min-height: 84px; resize: vertical; line-height: 1.5; }
     <div style="text-align:center;margin-top:14px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
       <button class="header-btn" style="background:var(--surface);color:var(--text-muted);border:1.5px solid var(--border)" onclick="reportBlocked()">לא ניתן להגיע / סורבה כניסה</button>
       <button class="header-btn" style="background:var(--surface);color:var(--text-muted);border:1.5px solid var(--border)" onclick="forfeitTarget()">ויתור על היעד</button>
+      <button class="header-btn" style="background:var(--surface);color:var(--danger);border:1.5px solid var(--danger)" onclick="releaseStuck()">בטל את היעד הנוכחי</button>
     </div>
   </div>
 </section>
@@ -1348,6 +1349,36 @@ async function confirmArrival() {
  * מפקח שמגיע ומוצא בית ספר סגור לא צריך להיתקע שעתיים.
  * הסיבה חובה, והוויתור נרשם: מי מוותר הרבה ייראה בדוח.
  */
+/**
+ * שחרור שיגור תקוע — **מסלול שאינו תלוי במסלול הדיווח.**
+ *
+ * ויתור דורש `assignment_id` מהלקוח ומחזיר דחייה שהלקוח צריך
+ * לפרש; סירוב כניסה הוא רשומת בדיקה שעוברת ב-`save_`. שניהם
+ * נשענים על המסלול שנשבר, ולכן מפקח שנתקע **אינו יכול לצאת**
+ * — כל ״קבל יעד״ מחזיר את אותו יעד. נמדד בשטח: 70 דקות.
+ *
+ * כאן השרת מוצא את השיגור הפתוח בעצמו, ולכן זה עובד גם כשמצב
+ * הלקוח אבד לגמרי.
+ */
+async function releaseStuck() {
+  if (!confirm('לבטל את היעד הנוכחי?\n\n' +
+      'השיגור ייסגר בשרת ותוכל לקבל יעד חדש. ' +
+      'לא תיווצר רשומת בדיקה, והשורה תישאר בגיליון מסומנת כשוחררה.'))
+    return;
+  const reason = prompt('סיבה קצרה (רשות):', 'שיגור תקוע') || '';
+  try {
+    const r = await apiPost({ action: 'releaseassignment', reason: reason });
+    if (!r.ok) throw new Error(r.error);
+    stopGps(); stopTimers();
+    state.assignment = null; state.arrival = null;
+    if (r.data && r.data.none) toast('לא נמצא שיגור פתוח לשחרור.', 'warn');
+    else toast('שוחררו ' + (r.data.released || 0) + ' שיגורים. אפשר לקבל יעד חדש.', '');
+    showScreen('home');
+  } catch (e) {
+    toast('השחרור נכשל: ' + e.message, 'error');
+  }
+}
+
 async function forfeitTarget() {
   if (!state.assignment) return;
   const inst = state.assignment.institution;
