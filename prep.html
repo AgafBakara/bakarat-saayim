@@ -324,6 +324,13 @@ function showStepResult(key, r){
     box.innerHTML += '<div class="row" style="margin-top:8px"><input class="form-input" id="year-override" placeholder="הקלד את המשפט" style="max-width:320px"><button class="btn danger" onclick="runStep(\'validate\',{confirm:$(\'#year-override\').value.trim()})">המשך למרות הפער</button></div>';
     return;
   }
+  if(r.blocked==='deactivate'){
+    t += '\n⛔ '+r.message+'\n';
+    box.textContent=t;
+    box.innerHTML += '<div class="row" style="margin-top:8px"><input class="form-input" id="deact-confirm" placeholder="הקלד: '+esc(r.needs_confirm)+'" style="max-width:320px">'+
+      '<button class="btn danger" onclick="runStep(\'sync\',{deactivate_confirm:$(\'#deact-confirm\').value.trim()})">השבת ובצע סנכרון</button></div>';
+    return;
+  }
   if(r.needs_confirm) t += '\n⚠ כדי לכתוב באמת יש להקליד: '+r.needs_confirm+'\n';
   if(r.year_check) t += 'שנה: '+r.year_check.text+'\n';
   if(r.result && r.result.lines) t += r.result.lines.join('\n')+'\n';
