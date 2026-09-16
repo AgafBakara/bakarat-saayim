@@ -124,7 +124,6 @@ th{background:#f3f4f6;font-weight:600;position:sticky;top:0}
       <button class="tab" data-t="pending" onclick="setTab('pending')">ממתין להחלטה <span class="badge" id="pending-badge"></span></button>
       <button class="tab" data-t="summary" onclick="setTab('summary')">סיכום חריגות</button>
       <button class="tab" data-t="paused" onclick="setTab('paused')">מוסדות בהשהיה</button>
-      <button class="tab" data-t="geo" onclick="setTab('geo')">קואורדינטות ידניות</button>
     </div>
 
     <div id="tab-files">
@@ -138,27 +137,34 @@ th{background:#f3f4f6;font-weight:600;position:sticky;top:0}
         <div id="upload-log" class="result" style="display:none"></div>
       </div>
       <div class="card">
-        <h2>שלבי העיבוד <span class="muted">— כל שלב נפתח כשהקודם הושלם אחרי ההעלאה האחרונה</span></h2>
+        <h2>עיבוד
+          <button class="btn" id="btn-run" onclick="runAll(false)">עבד</button>
+          <span class="muted" style="font-size:13px">— כל השלבים ברצף, כולל ״טען קיים״ אם המפתחות ריקים. בסוף נפתח ״ממתין להחלטה״. שלב שנחסם או נכשל אינו עוצר את השאר: מה שתלוי בו מחכה ל״המשך״.</span>
+        </h2>
         <div class="steps" id="steps"></div>
         <div id="step-result" class="result" style="display:none"></div>
-        <div id="suggested" style="display:none"></div>
-        <div id="paused-cand" style="display:none"></div>
       </div>
     </div>
 
     <div id="tab-pending" style="display:none">
       <div class="card">
         <h2>ממתין להחלטה
+          <button class="btn" id="btn-continue" onclick="runAll(true)">המשך</button>
           <button class="btn sec" onclick="loadPending(true)">רענן מהקבצים</button>
           <button class="btn sec" onclick="loadPending(false)">טען עוד גיאוקוד</button>
         </h2>
+        <div id="pend-stops"></div>
         <div class="muted">מחליטים פעם אחת. לכל פריט הצעה מוכנה עם הסיבה ורמת הביטחון — ביטחון גבוה קודם; לחיצה אחת מאשרת, או משנים. מה שאושר נכתב למפתח ואינו חוזר — לא כאן ולא כחריגה. ״רענן מהקבצים״ בונה את הרשימה מחדש; כל טעינה מריצה גיאוקוד מחמיר לעד 8 כתובות שטרם נבדקו.</div>
         <div id="pend-meta" class="muted" style="margin-top:6px"></div>
         <div id="pend-seed" style="display:none;margin-top:8px"></div>
+        <h3 style="margin:14px 0 6px">מוסדות מוצעים <span class="badge" id="pend-sug-n"></span></h3>
+        <div id="pend-sug"></div>
         <h3 style="margin:14px 0 6px">כתובות <span class="badge" id="pend-addr-n"></span></h3>
         <div id="pend-addr"></div>
         <h3 style="margin:14px 0 6px">מוסדות — סמל + שם כפי שבקובץ <span class="badge" id="pend-inst-n"></span></h3>
         <div id="pend-inst"></div>
+        <h3 style="margin:14px 0 6px">מועמדים להשהיה <span class="badge" id="pend-pause-n"></span></h3>
+        <div id="pend-pause"></div>
       </div>
     </div>
 
@@ -189,20 +195,6 @@ th{background:#f3f4f6;font-weight:600;position:sticky;top:0}
       </div>
     </div>
 
-    <div id="tab-geo" style="display:none">
-      <div class="card">
-        <h2>השלמת קואורדינטה ידנית</h2>
-        <div class="muted">מגוגל מפות: לחיצה ימנית על המבנה ← העתקת הקואורדינטה. נכתב לאתר, geo_status ״הושלם ידנית ממפות״, ומסיר ״גיאוקוד שגוי״ מהמוסדות שעליו. הנקודה חייבת להיות בתחום בני ברק.</div>
-        <div class="row" style="margin-top:10px">
-          <input class="form-input" id="geo-site" placeholder="site_id" style="max-width:200px">
-          <input class="form-input" id="geo-lat" placeholder="lat (32.0…)" style="max-width:160px">
-          <input class="form-input" id="geo-lng" placeholder="lng (34.8…)" style="max-width:160px">
-          <button class="btn" onclick="manualGeo()">כתוב</button>
-        </div>
-        <div id="geo-result" class="result" style="display:none"></div>
-        <div id="geo-pending" style="margin-top:12px"></div>
-      </div>
-    </div>
   </div>
 </section>
 <div id="flash"></div>
@@ -277,11 +269,10 @@ function enter(){
 function setTab(t){
   state.tab=t;
   document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('active', b.dataset.t===t));
-  ['files','pending','summary','paused','geo'].forEach(k=>{ $('#tab-'+k).style.display = k===t ? '' : 'none'; });
+  ['files','pending','summary','paused'].forEach(k=>{ $('#tab-'+k).style.display = k===t ? '' : 'none'; });
   if(t==='summary' && !state.summary) loadSummary();
   if(t==='pending' && !state.pending) loadPending(false);
   if(t==='paused') renderPaused();
-  if(t==='geo') renderGeoPending();
 }
 
 /* ═══ מצב ═══ */
@@ -295,7 +286,7 @@ function renderStatus(){
   const s=state.status;
   $('#mode-badge').innerHTML = s.write_enabled ? '<span class="badge bad">כתיבה פעילה</span>' : '<span class="badge warn">מצב ניסיון</span>';
   $('#mode-strip').innerHTML = s.write_enabled
-    ? '<div class="strip bad">כתיבה פעילה — שלבי הכתיבה נוגעים בלשוניות הנתונים. סנכרון, איחוד וניקוי דורשים הקלדת אישור.</div>'
+    ? '<div class="strip bad">כתיבה פעילה — ״עבד״ מריץ את כל השלבים, כולל סנכרון, איחוד וניקוי. שתי עצירות בלבד — פער שנים ובלם ההשבתה — מופיעות ב״ממתין להחלטה״, ו״המשך״ מריץ את מה שחיכה.</div>'
     : '<div class="strip warn">מצב ניסיון — PREP_WRITE_ENABLED כבוי. כל שלב מריץ את הגרסה היבשה שלו; לשוניות הנתונים אינן נגעות.' +
       (s.folder ? '' : ' · <b>לא הוגדרה תיקיית עיבוד</b> — הרץ setupSplitBooks.') + '</div>';
   const yc=s.year_check||{};
@@ -310,103 +301,79 @@ function renderStatus(){
   }).join('');
   renderSteps();
   $('#paused-badge').textContent = (s.paused&&s.paused.symbols||0)+' סמלים';
-  const pn=(s.pending&&(s.pending.address+s.pending.institution))||0;
+  const pn=(s.pending&&s.pending.total)||0;
   $('#pending-badge').textContent = pn||''; $('#pending-badge').className='badge'+(pn?' bad':'');
   if(state.tab==='paused') renderPaused();
+}
+function stepState(st){
+  const run = state.run && state.run[st.key];
+  if(run) return run;
+  return st.fresh ? {cls:'done', text:(st.done_at?fmtTs(st.done_at)+' · ':'')+(st.summary||'הושלם')} : {cls:'locked', text:'טרם רץ אחרי ההעלאה האחרונה'};
 }
 function renderSteps(){
   const s=state.status; const steps=s.steps||[];
   $('#steps').innerHTML = steps.map(st=>{
-    const cls = st.fresh ? 'done' : (st.enabled ? '' : 'locked');
-    const needConfirm = st.confirm && s.write_enabled;
-    return '<div class="step '+cls+'" id="step-'+st.key+'"><div class="n">'+st.n+'</div>'+
+    const x=stepState(st);
+    return '<div class="step '+x.cls+'" id="step-'+st.key+'"><div class="n">'+st.n+'</div>'+
       '<div><div class="lbl">'+esc(st.label)+(st.write?' <span class="badge warn">כותב</span>':'')+'</div>'+
-      '<div class="sum">'+(st.done_at?fmtTs(st.done_at)+' · ':'')+esc(st.summary||(st.enabled?'טרם רץ אחרי ההעלאה האחרונה':'ממתין לשלב הקודם'))+'</div></div>'+
-      '<div class="act">'+(needConfirm?'<input id="confirm-'+st.key+'" placeholder="הקלד: '+esc(st.confirm)+'">':'')+
-      '<button class="btn'+(st.fresh?' sec':'')+'" '+(st.enabled?'':'disabled')+' onclick="runStep(\''+st.key+'\')">'+(st.fresh?'הרץ שוב':'הרץ')+'</button></div></div>';
+      '<div class="sum">'+esc(x.text)+'</div></div><div class="act">'+(x.badge||'')+'</div></div>';
   }).join('');
 }
-async function runStep(key, extra){
-  const btn = document.querySelector('#step-'+key+' button');
-  if(btn){ btn.disabled=true; btn.textContent='רץ…'; }
-  const inp = $('#confirm-'+key);
-  const payload = Object.assign({action:'preprun', step:key}, extra||{});
-  if(inp && inp.value.trim()) payload.confirm = inp.value.trim();
+function setStep(key, cls, text, badge){ state.run=state.run||{}; state.run[key]={cls,text,badge}; renderSteps(); }
+/* ״עבד״ / ״המשך״: כל השלבים ברצף לפי התלויות. חסימה (שנים, בלם) או
+   כשל אינם עוצרים — מה שתלוי מחכה; בסוף נפתח ״ממתין להחלטה״. */
+async function runAll(resume){
+  const btn=$('#btn-run'), cont=$('#btn-continue');
+  if(state.running) return; state.running=true;
+  if(btn){ btn.disabled=true; btn.textContent=resume?'ממשיך…':'מעבד…'; } if(cont) cont.disabled=true;
+  setTab('files'); state.run={}; $('#step-result').style.display='none';
+  const log=[];
   try{
-    const r = await call(payload);
-    showStepResult(key, r);
     await loadStatus();
-  }catch(e){ flash(e.message, true, 8000); if(btn){ btn.disabled=false; btn.textContent='הרץ'; } }
+    const s=state.status;
+    if(s.registry && !s.registry.seeded){
+      log.push('טוען קיים…');
+      try{ const r=await call({action:'prepseed'}); log.push('נטענו: כתובות '+r.addresses+', מוסדות '+r.institutions); }
+      catch(e){ log.push('טען קיים נכשל: '+e.message); }
+      await loadStatus();
+    }
+    const results={};
+    for(const st of state.status.steps){
+      const deps=(state.status.deps||{})[st.key]||[];
+      const blocked=deps.filter(d=>results[d] && !results[d].ok);
+      if(resume && st.fresh && !blocked.length){ results[st.key]={ok:true}; continue; }
+      if(blocked.length){ results[st.key]={ok:false, waiting:true}; setStep(st.key,'locked','ממתין ל: '+blocked.map(d=>stepLabel(d)).join(', '),'<span class="badge warn">מחכה</span>'); continue; }
+      setStep(st.key,'','רץ…','<span class="badge">רץ</span>');
+      let r;
+      try{
+        r=await call({action:'preprun', step:st.key, force:1, auto:1});
+        if(r.ok && r.needs_confirm && state.status.write_enabled) r=await call({action:'preprun', step:st.key, force:1, auto:1, confirm:r.needs_confirm});
+      }catch(e){ r={ok:false, error:e.message, blocked:'error'}; }
+      results[st.key]=r;
+      if(r.ok) setStep(st.key,'done', stepSummary(r), r.dry?'<span class="badge">ניסיון</span>':'<span class="badge ok">הושלם</span>');
+      else if(r.blocked==='year') setStep(st.key,'locked','פער שנים — ממתין להחלטה','<span class="badge bad">ממתין להחלטה</span>');
+      else if(r.blocked==='deactivate') setStep(st.key,'locked','בלם ההשבתה — ממתין להחלטה','<span class="badge bad">ממתין להחלטה</span>');
+      else setStep(st.key,'locked','נכשל: '+(r.error||r.message||''),'<span class="badge bad">נכשל</span>');
+      log.push(st.n+'. '+st.label+': '+(r.ok?'✓':'✗ '+(r.error||r.message||r.blocked||'')));
+    }
+    const box=$('#step-result'); box.style.display=''; box.textContent=log.join('\n');
+    await loadStatus(); state.summary=null;
+    await loadPending(true); setTab('pending');
+  }catch(e){ flash(e.message, true, 8000); }
+  finally{ state.running=false; if(btn){ btn.disabled=false; btn.textContent='עבד'; } if(cont) cont.disabled=false; }
 }
-function showStepResult(key, r){
-  const box=$('#step-result'); box.style.display='';
-  $('#suggested').style.display='none'; $('#paused-cand').style.display='none';
-  let t = 'שלב '+r.n+' · '+r.label+(r.dry?' · מצב ניסיון':'')+'\n';
-  if(r.note) t += r.note+'\n';
-  if(r.blocked==='year'){
-    t += '\n⛔ '+r.message+'\n';
-    box.textContent=t;
-    box.innerHTML += '<div class="row" style="margin-top:8px"><input class="form-input" id="year-override" placeholder="הקלד את המשפט" style="max-width:320px"><button class="btn danger" onclick="runStep(\'validate\',{confirm:$(\'#year-override\').value.trim()})">המשך למרות הפער</button></div>';
-    return;
-  }
-  if(r.blocked==='deactivate'){
-    t += '\n⛔ '+r.message+'\n';
-    box.textContent=t;
-    box.innerHTML += '<div class="row" style="margin-top:8px"><input class="form-input" id="deact-confirm" placeholder="הקלד: '+esc(r.needs_confirm)+'" style="max-width:320px">'+
-      '<button class="btn danger" onclick="runStep(\'sync\',{deactivate_confirm:$(\'#deact-confirm\').value.trim()})">השבת ובצע סנכרון</button></div>';
-    return;
-  }
-  if(r.needs_confirm) t += '\n⚠ כדי לכתוב באמת יש להקליד: '+r.needs_confirm+'\n';
-  if(r.year_check) t += 'שנה: '+r.year_check.text+'\n';
-  if(r.result && r.result.lines) t += r.result.lines.join('\n')+'\n';
-  else if(r.result) t += JSON.stringify(r.result, null, 1)+'\n';
-  if(r.dry_run && r.dry_run.lines) t += 'הרצה יבשה:\n'+r.dry_run.lines.join('\n')+'\n';
-  if(r.sync) t += 'נכתבו '+r.sync.written+' · נוספו '+r.sync.added+' · הושבתו '+r.sync.deactivated+' · שעות השתנו '+r.sync.changed+'\n';
-  if(r.pending) t += r.pending.length+' אתרים בלי קואורדינטה:\n'+r.pending.map(p=>'  '+p.site_id+' · '+p.address+' · '+p.geo_status).join('\n')+'\n';
-  if(r.plan){
-    if(r.plan.merge) t += 'קבוצות לאיחוד: '+r.plan.merge.length+' · מדולגות: '+(r.plan.skip||[]).length+'\n';
-    if(r.plan.del) t += 'למחיקה: '+r.plan.del.length+' · נשארות: '+(r.plan.keep||[]).length+' · להכרעה ידנית: '+(r.plan.skip||[]).length+'\n'+
-      (r.plan.skip||[]).map(x=>'  '+x.key+': '+x.why).join('\n')+'\n';
-  }
-  box.textContent=t;
-  if(key==='match' && r.suggested) renderSuggested(r.suggested);
-  if(key==='paused') renderPausedCandidates(r);
-  state.summary=null;
-}
-function renderSuggested(list){
-  const el=$('#suggested'); el.style.display='';
-  if(!list.length){ el.innerHTML='<div class="muted" style="margin-top:8px">אין מוסדות מוצעים — כל הסמלים שנדחו אינם בקובץ הכתובות.</div>'; return; }
-  const write = state.status && state.status.write_enabled;
-  el.innerHTML = '<h3 style="margin:12px 0 6px;font-size:15px">מוסדות מוצעים — '+list.length+' <span class="muted">(סמל שנדחה בסנכרון ונמצא בקובץ הכתובות; הוספה מכניסה אותו להגרלה)</span></h3>'+
-    '<div class="drill"><table><tr><th></th><th>סמל</th><th>שם</th><th>כתובת</th><th>מגזר</th><th>site_id</th></tr>'+
-    list.map((r,i)=>'<tr><td><input type="checkbox" class="sug" data-i="'+i+'"></td><td>'+esc(r.symbol)+'</td><td>'+esc(r.name)+'</td><td>'+esc(r.address)+'</td><td>'+esc(r.kind)+'</td><td>'+esc(r.site_id)+'</td></tr>').join('')+
-    '</table></div><div class="row" style="margin-top:8px"><button class="btn" '+(write?'':'disabled')+' onclick="addSuggested()">הוסף את המסומנים למוסדות</button>'+(write?'':'<span class="muted">מצב ניסיון — אין הוספה</span>')+'</div>';
-  el._list=list;
-}
-async function addSuggested(){
-  const list=$('#suggested')._list||[];
-  const rows=[...document.querySelectorAll('.sug:checked')].map(c=>list[Number(c.dataset.i)]);
-  if(!rows.length) return flash('לא סומנו שורות', true);
-  if(!confirm('להוסיף '+rows.length+' מוסדות? הם ייכנסו להגרלה.')) return;
-  try{ const r=await call({action:'prepaddinst', rows}); flash('נוספו '+r.added.length+(r.skipped.length?' · דולגו '+r.skipped.length:'')); state.summary=null; }
-  catch(e){ flash(e.message, true, 7000); }
-}
-function renderPausedCandidates(r){
-  const el=$('#paused-cand'); el.style.display='';
-  const write = state.status && state.status.write_enabled;
-  const c=r.candidates||[];
-  el.innerHTML = '<h3 style="margin:12px 0 6px;font-size:15px">מועמדים חדשים להשהיה — '+c.length+' <span class="muted">(אינם ברשימה; א = סיכון לממצא שווא, ב = לא ניתן לשיגור)</span></h3>'+
-    (c.length?'<div class="drill"><table><tr><th></th><th>קב׳</th><th>סמל</th><th>שם</th><th>סייעות</th><th>סיבה שתירשם</th><th>פירוט</th></tr>'+
-    c.map((x,i)=>'<tr><td><input type="checkbox" class="pc" data-i="'+i+'"></td><td>'+x.group+'</td><td>'+esc(x.symbol)+'</td><td>'+esc(x.name)+'</td><td>'+x.assistants+'</td><td>'+esc(x.kinds)+'</td><td>'+esc(x.reasons)+'</td></tr>').join('')+
-    '</table></div><div class="row" style="margin-top:8px"><button class="btn" '+(write?'':'disabled')+' onclick="addPaused()">השהה את המסומנים</button>'+(write?'':'<span class="muted">מצב ניסיון</span>')+'</div>':'<div class="muted">אין מועמדים חדשים.</div>');
-  el._list=c;
-}
-async function addPaused(){
-  const list=$('#paused-cand')._list||[];
-  const add=[...document.querySelectorAll('.pc:checked')].map(c=>list[Number(c.dataset.i)]).map(x=>({symbol:x.symbol, reason:x.kinds, detail:x.reasons, name:x.name, assistants:x.assistants}));
-  if(!add.length) return flash('לא סומנו שורות', true);
-  try{ const r=await call({action:'preppaused', add}); flash('הושהו '+r.added.length); await loadStatus(); state.summary=null; }
-  catch(e){ flash(e.message, true, 7000); }
+function stepLabel(k){ const st=(state.status.steps||[]).filter(x=>x.key===k)[0]; return st?st.label:k; }
+function stepSummary(r){
+  if(r.sync) return 'נכתבו '+r.sync.written+' · נוספו '+r.sync.added+' · הושבתו '+r.sync.deactivated+' · שעות השתנו '+r.sync.changed;
+  if(r.dry_run) return 'ניסיון: '+r.dry_run.rows+' תקינות · '+r.dry_run.rejected+' נדחו';
+  if(r.result && r.result.rows!==undefined) return r.result.rows+' תקינות · '+r.result.rejected+' נדחו';
+  if(r.suggested) return r.suggested.length+' מוסדות מוצעים';
+  if(r.pending) return r.pending.length+' אתרים בלי קואורדינטה';
+  if(r.plan && r.plan.merge) return r.plan.merge.length+' קבוצות לאיחוד · '+(r.plan.skip||[]).length+' מדולגות';
+  if(r.plan && r.plan.del) return r.plan.del.length+' למחיקה · '+(r.plan.skip||[]).length+' להכרעה';
+  if(r.candidates) return (r.paused||[]).length+' בהשהיה · '+r.candidates.length+' מועמדים';
+  if(r.result && r.result.ok!==undefined) return 'זוהו '+r.result.ok+' · נכשלו '+r.result.failed+(r.result.from_key?' · מהמפתח '+r.result.from_key:'');
+  return 'הושלם';
 }
 
 /* ═══ העלאה ═══ */
@@ -504,6 +471,40 @@ function renderPending(){
   if(st.registry && !st.registry.seeded){ seed.style.display=''; seed.innerHTML='<div class="strip warn">המפתחות עדיין ריקים. <button class="btn" onclick="seedRegistries()">טען קיים</button> <span class="muted">אתרים עם קואורדינטה תקינה, סמלים עם שורה אחת, נרדפים, השהיות — פעם אחת.</span></div>'; }
   else seed.style.display='none';
   $('#pend-addr-n').textContent=addr.length; $('#pend-inst-n').textContent=inst.length;
+  const stops=items.filter(i=>i.what==='year'||i.what==='deactivate'||i.what==='error');
+  const sug=items.filter(i=>i.what==='suggested'), pause=items.filter(i=>i.what==='pause');
+  $('#pend-sug-n').textContent=sug.length; $('#pend-pause-n').textContent=pause.length;
+  $('#btn-continue').style.display = (state.status&&state.status.steps||[]).some(s=>!s.fresh) ? '' : 'none';
+
+  /* עצירות — ראשונות. אחרי אישור: ״המשך״ */
+  $('#pend-stops').innerHTML = stops.map((it,idx)=>{
+    const pl=it.payload||{}, pr=it.proposal||{};
+    if(it.what==='year') return '<div class="strip bad" style="margin-bottom:8px"><div>⛔ '+esc(pl.text)+'</div><div class="meta" style="font-weight:400;margin-top:4px">'+esc(pr.reason||'')+'</div>'+
+      '<div class="row" style="margin-top:6px"><button class="btn" data-act="stop-year" data-idx="'+idx+'">המשך למרות פער שנים</button> <span class="muted">אחרי האישור — ״המשך״ מריץ את מה שחיכה</span></div></div>';
+    if(it.what==='deactivate') return '<div class="strip bad" style="margin-bottom:8px"><div>⛔ בלם ההשבתה: הסנכרון ישבית '+pl.assistants+' סייעות ('+pl.rows+' שורות) — '+esc((pl.lines||[]).join(' · '))+'</div>'+
+      '<div class="meta" style="font-weight:400;margin-top:4px">'+esc(pr.reason||'')+'</div>'+
+      '<div class="row" style="margin-top:6px"><input class="form-input" id="ps-phrase-'+idx+'" placeholder="הקלד: '+esc(pl.phrase)+'" style="max-width:280px"><button class="btn danger" data-act="stop-deactivate" data-idx="'+idx+'">אשר השבתה</button></div></div>';
+    return '<div class="strip bad" style="margin-bottom:8px"><div>✗ שלב '+pl.n+' · '+esc(pl.label)+' נכשל: '+esc(pl.message)+'</div><div class="meta" style="font-weight:400;margin-top:4px">'+esc(pr.reason||'')+'</div>'+
+      '<div class="row" style="margin-top:6px"><button class="btn sec" data-act="stop-error" data-idx="'+idx+'">סמן כנקרא</button></div></div>';
+  }).join('');
+
+  /* מוסדות מוצעים — לחיצה אחת מוסיפה (דורש כתיבה) */
+  $('#pend-sug').innerHTML = sug.length ? sug.map((it,idx)=>{
+    const pl=it.payload||{}, pr=it.proposal||{};
+    return '<div class="file" style="margin-bottom:8px"><div class="nm">'+esc(pl.symbol)+' · '+esc(pl.name)+' '+confBadge(pr.confidence)+'</div>'+
+      '<div class="meta">'+esc(pl.address||'בלי כתובת')+(pl.kind?' · '+esc(pl.kind):'')+(pl.site_id?' · '+esc(pl.site_id):'')+'</div>'+
+      '<div class="meta" style="margin-top:4px"><b>למה:</b> '+esc(pr.reason||'')+'</div>'+
+      '<div class="row" style="margin-top:6px"><button class="btn" data-act="sug-add" data-idx="'+idx+'">אשר: הוסף למוסדות</button>'+(st.write_enabled?'':' <span class="muted">מצב ניסיון — ההוספה תידחה</span>')+'</div></div>';
+  }).join('') : '<div class="muted" style="padding:6px 0">אין מוסדות מוצעים.</div>';
+
+  /* מועמדים להשהיה — לחיצה אחת משהה */
+  $('#pend-pause').innerHTML = pause.length ? pause.map((it,idx)=>{
+    const pl=it.payload||{}, pr=it.proposal||{};
+    return '<div class="file" style="margin-bottom:8px"><div class="nm">'+esc(pl.symbol)+' · '+esc(pl.name)+' '+confBadge(pr.confidence)+'</div>'+
+      '<div class="meta">'+pl.assistants+' סייעות · '+esc(pl.institutions||'')+'</div>'+
+      '<div class="meta" style="margin-top:4px"><b>למה:</b> '+esc(pr.reason_text||'')+'</div>'+
+      '<div class="row" style="margin-top:6px"><button class="btn danger" data-act="pause-add" data-idx="'+idx+'">אשר: השהה — '+esc(pr.reason||'')+'</button>'+(st.write_enabled?'':' <span class="muted">מצב ניסיון — ההשהיה תידחה</span>')+'</div></div>';
+  }).join('') : '<div class="muted" style="padding:6px 0">אין מועמדים חדשים.</div>';
 
   /* כתובות — ההצעה מסומנת; לחיצה אחת. סדר: כתיב דומה ← גיאוקוד ← מפות + הדבקה */
   $('#pend-addr').innerHTML = addr.length ? addr.map((it,idx)=>{
@@ -555,9 +556,14 @@ document.addEventListener('click', async e=>{
   const b=e.target.closest('[data-act]'); if(!b) return;
   const act=b.dataset.act, idx=+b.dataset.idx;
   const items=(state.pending&&state.pending.items)||[];
-  const list=act.indexOf('addr-')===0 ? items.filter(i=>i.what==='address') : items.filter(i=>i.what==='institution');
+  const list = act.indexOf('addr-')===0 ? items.filter(i=>i.what==='address')
+             : act.indexOf('stop-')===0 ? items.filter(i=>i.what==='year'||i.what==='deactivate'||i.what==='error')
+             : act==='sug-add' ? items.filter(i=>i.what==='suggested')
+             : act==='pause-add' ? items.filter(i=>i.what==='pause')
+             : items.filter(i=>i.what==='institution');
   const it=list[idx]; if(!it) return;
   const req={action:'prepdecide', what:it.what, key:it.key};
+  if(act==='stop-deactivate'){ req.phrase=$('#ps-phrase-'+idx).value.trim(); if(!req.phrase) return flash('הקלד את המשפט', true); }
   if(act==='addr-proposal') req.choice='proposal';
   if(act==='addr-manual'){ req.choice='manual'; req.lat=$('#pa-lat-'+idx).value.trim(); req.lng=$('#pa-lng-'+idx).value.trim(); if(!req.lat||!req.lng) return flash('lat ו-lng — שניהם חובה', true); }
   if(act==='addr-site'){ req.choice='site'; req.target_site_id=$('#pa-site-'+idx).value.trim(); if(!req.target_site_id) return flash('חסר site_id', true); }
@@ -573,7 +579,7 @@ document.addEventListener('click', async e=>{
   b.disabled=true;
   try{
     const r=await call(req);
-    flash('נכתב למפתח ('+r.result+')'+(r.side_effects&&r.side_effects.length?' · '+r.side_effects.join(' · '):''), false, 6000);
+    flash((r.result==='approved'?'אושר — לחץ ״המשך״':'נכתב ('+r.result+')')+(r.side_effects&&r.side_effects.length?' · '+r.side_effects.join(' · '):''), false, 6000);
     state.pending.items = items.filter(i=>!(i.what===it.what&&i.key===it.key));
     state.summary=null; renderPending(); loadStatus();
   }catch(err){ flash(err.message, true, 8000); b.disabled=false; }
@@ -595,22 +601,6 @@ async function releasePaused(){
   if(!confirm('לשחרר מההשהיה: '+syms+'?')) return;
   try{ const r=await call({action:'preppaused', release:syms.split(/[,\s]+/).filter(Boolean), note}); flash('שוחררו '+r.released.length+(r.missing.length?' · לא נמצאו: '+r.missing.join(', '):'')); $('#rel-syms').value=''; $('#rel-note').value=''; await loadStatus(); state.summary=null; renderPaused(); }
   catch(e){ flash(e.message, true, 7000); }
-}
-
-/* ═══ קואורדינטות ידניות ═══ */
-async function manualGeo(){
-  const site_id=$('#geo-site').value.trim(), lat=$('#geo-lat').value.trim(), lng=$('#geo-lng').value.trim();
-  const box=$('#geo-result'); box.style.display='';
-  try{ const r=await call({action:'prepmanualgeo', site_id, lat, lng}); box.textContent='נכתב: '+r.site_id+(r.released?' · הוסרו מההשהיה: '+r.released:'')+(r.updated?' · עודכנה סיבה: '+r.updated:''); $('#geo-site').value=''; $('#geo-lat').value=''; $('#geo-lng').value=''; state.summary=null; }
-  catch(e){ box.textContent='✗ '+e.message; }
-}
-function renderGeoPending(){
-  const s=state.summary; const el=$('#geo-pending');
-  if(!s){ el.innerHTML='<div class="muted">רשימת האתרים בלי קואורדינטה — בלשונית ״סיכום חריגות״ (מוסד בלי קואורדינטה).</div>'; return; }
-  const sec=s.sections.filter(x=>x.key==='no_geo')[0];
-  if(!sec||!sec.rows.length){ el.innerHTML='<div class="muted">אין מוסדות בלי קואורדינטה.</div>'; return; }
-  el.innerHTML='<div style="font-weight:600;margin-bottom:6px">להשלמה — '+sec.count+'</div><div class="drill"><table><tr><th>site_id</th><th>סמל</th><th>שם</th><th>כתובת</th><th>סייעות</th></tr>'+
-    sec.rows.map(r=>'<tr><td><a href="#" onclick="$(\'#geo-site\').value=\''+esc(r.site_id)+'\';return false">'+esc(r.site_id)+'</a></td><td>'+esc(r.symbol)+'</td><td>'+esc(r.name)+'</td><td>'+esc(r.address)+'</td><td>'+r.assistants+'</td></tr>').join('')+'</table></div>';
 }
 
 /* ═══ אתחול — מסך סיסמה תמיד ═══ */
