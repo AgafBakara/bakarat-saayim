@@ -121,6 +121,7 @@ th{background:#f3f4f6;font-weight:600;position:sticky;top:0}
     <div id="mode-strip"></div>
     <div class="tabs">
       <button class="tab active" data-t="files" onclick="setTab('files')">קבצים ושלבים</button>
+      <button class="tab" data-t="pending" onclick="setTab('pending')">ממתין להחלטה <span class="badge" id="pending-badge"></span></button>
       <button class="tab" data-t="summary" onclick="setTab('summary')">סיכום חריגות</button>
       <button class="tab" data-t="paused" onclick="setTab('paused')">מוסדות בהשהיה</button>
       <button class="tab" data-t="geo" onclick="setTab('geo')">קואורדינטות ידניות</button>
@@ -145,9 +146,30 @@ th{background:#f3f4f6;font-weight:600;position:sticky;top:0}
       </div>
     </div>
 
+    <div id="tab-pending" style="display:none">
+      <div class="card">
+        <h2>ממתין להחלטה
+          <button class="btn sec" onclick="loadPending(true)">רענן מהקבצים</button>
+          <button class="btn sec" onclick="loadPending(false,true)">הצע גיאוקוד (8)</button>
+        </h2>
+        <div class="muted">מחליטים פעם אחת. כתובת או צירוף (סמל, שם) שאושרו נכתבים למפתח ואינם חוזרים — לא כאן ולא כחריגה. ״רענן מהקבצים״ בונה את הרשימה מחדש מהאתרים ומקובצי המקור; ״הצע גיאוקוד״ מריץ גיאוקוד מחמיר לעד 8 כתובות בלי הצעה.</div>
+        <div id="pend-meta" class="muted" style="margin-top:6px"></div>
+        <div id="pend-seed" style="display:none;margin-top:8px"></div>
+        <h3 style="margin:14px 0 6px">כתובות <span class="badge" id="pend-addr-n"></span></h3>
+        <div id="pend-addr"></div>
+        <h3 style="margin:14px 0 6px">מוסדות — סמל + שם כפי שבקובץ <span class="badge" id="pend-inst-n"></span></h3>
+        <div id="pend-inst"></div>
+      </div>
+    </div>
+
     <div id="tab-summary" style="display:none">
       <div class="card">
-        <h2>סיכום חריגות <button class="btn sec" onclick="loadSummary()">רענן</button></h2>
+        <h2>סיכום חריגות <button class="btn sec" onclick="loadSummary()">רענן</button>
+          <span class="muted" style="font-size:13px;margin-inline-start:10px">
+            <label><input type="radio" name="sum-view" value="new" onchange="setSumView('new')"> חדש מאז ההרצה הקודמת</label>
+            <label style="margin-inline-start:10px"><input type="radio" name="sum-view" value="all" checked onchange="setSumView('all')"> הכל</label>
+          </span>
+        </h2>
         <div class="muted" id="sum-meta"></div>
         <div class="sum-grid" id="sum-grid"></div>
         <div class="drill" id="sum-drill" style="display:none"></div>
@@ -255,8 +277,9 @@ function enter(){
 function setTab(t){
   state.tab=t;
   document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('active', b.dataset.t===t));
-  ['files','summary','paused','geo'].forEach(k=>{ $('#tab-'+k).style.display = k===t ? '' : 'none'; });
+  ['files','pending','summary','paused','geo'].forEach(k=>{ $('#tab-'+k).style.display = k===t ? '' : 'none'; });
   if(t==='summary' && !state.summary) loadSummary();
+  if(t==='pending' && !state.pending) loadPending(false);
   if(t==='paused') renderPaused();
   if(t==='geo') renderGeoPending();
 }
@@ -287,6 +310,8 @@ function renderStatus(){
   }).join('');
   renderSteps();
   $('#paused-badge').textContent = (s.paused&&s.paused.symbols||0)+' סמלים';
+  const pn=(s.pending&&(s.pending.address+s.pending.institution))||0;
+  $('#pending-badge').textContent = pn||''; $('#pending-badge').className='badge'+(pn?' bad':'');
   if(state.tab==='paused') renderPaused();
 }
 function renderSteps(){
@@ -419,16 +444,132 @@ async function loadSummary(){
     state.summary = await call({action:'prepsummary'});
     const s=state.summary;
     $('#sum-meta').textContent = 'רוסטר פעיל: '+s.roster_active+' שורות · בהשהיה: '+s.paused_assistants+' סייעות · סנכרון אחרון: '+(s.sync.run_at?fmtTs(s.sync.run_at)+' (נוספו '+s.sync.added+', הושבתו '+s.sync.deactivated+', שעות השתנו '+s.sync.changed+')':'—');
-    $('#sum-grid').innerHTML = s.sections.map((sec,i)=>'<div class="kpi'+(sec.count?' bad':'')+'" onclick="drill('+i+')"><div class="num">'+sec.count+'</div><div class="l">'+esc(sec.label)+'</div></div>').join('');
+    if(s.pending) $('#sum-meta').textContent += ' · ממתין להחלטה: '+(s.pending.address+s.pending.institution)+(s.registry?' · במפתחות: '+s.registry.addresses+' כתובות, '+s.registry.institutions+' מוסדות':'');
+    renderSumGrid();
     $('#sum-drill').style.display='none';
   }catch(e){ $('#sum-grid').innerHTML='<div class="err" style="display:block">'+esc(e.message)+'</div>'; }
 }
+state.sumView='all';
+function setSumView(v){ state.sumView=v; renderSumGrid(); $('#sum-drill').style.display='none'; }
+function renderSumGrid(){
+  const s=state.summary; if(!s) return;
+  const onlyNew = state.sumView==='new';
+  $('#sum-grid').innerHTML = s.sections.map((sec,i)=>{
+    const n = onlyNew ? sec.new_count : sec.count;
+    const sub = s.has_prev ? '<div class="muted" style="font-size:12px">חדש '+sec.new_count+' · ידוע '+sec.known_count+'</div>' : '<div class="muted" style="font-size:12px">אין הרצה קודמת להשוואה</div>';
+    return '<div class="kpi'+(n?' bad':'')+'" onclick="drill('+i+')"><div class="num">'+n+'</div><div class="l">'+esc(sec.label)+'</div>'+sub+'</div>';
+  }).join('');
+}
+const HIDE_COLS = {_key:1,_new:1};
+function drillTable(rows, extra){
+  const cols=Object.keys(rows[0]).filter(c=>!HIDE_COLS[c]);
+  return '<table><tr>'+(extra?'<th></th>':'')+cols.map(c=>'<th>'+esc(c)+'</th>').join('')+'</tr>'+
+    rows.map(r=>'<tr'+(r._new?' style="background:#fff7ed"':'')+'>'+(extra?'<td>'+(r._new?'<span class="badge warn">חדש</span>':'')+'</td>':'')+
+      cols.map(c=>'<td>'+esc(typeof r[c]==='object'&&r[c]!==null?JSON.stringify(r[c]):r[c])+'</td>').join('')+'</tr>').join('')+'</table>';
+}
 function drill(i){
   const sec=state.summary.sections[i]; const el=$('#sum-drill'); el.style.display='';
-  if(!sec.rows.length){ el.innerHTML='<div class="muted" style="padding:10px">'+esc(sec.label)+': אין</div>'; return; }
-  const cols=Object.keys(sec.rows[0]);
-  el.innerHTML='<div style="padding:8px 10px;font-weight:600">'+esc(sec.label)+' — '+sec.count+(sec.note?' <span class="muted">· '+esc(sec.note)+'</span>':'')+'</div>'+
-    '<table><tr>'+cols.map(c=>'<th>'+esc(c)+'</th>').join('')+'</tr>'+sec.rows.map(r=>'<tr>'+cols.map(c=>'<td>'+esc(r[c])+'</td>').join('')+'</tr>').join('')+'</table>';
+  const onlyNew = state.sumView==='new';
+  const fresh=sec.rows.filter(r=>r._new), known=sec.rows.filter(r=>!r._new);
+  const head='<div style="padding:8px 10px;font-weight:600">'+esc(sec.label)+' — '+sec.count+(sec.note?' <span class="muted">· '+esc(sec.note)+'</span>':'')+
+    (sec.count>sec.rows.length?' <span class="muted">· מוצגות '+sec.rows.length+' הראשונות</span>':'')+'</div>';
+  if(!sec.rows.length){ el.innerHTML=head+'<div class="muted" style="padding:10px">אין</div>'; return; }
+  let body='';
+  body+='<div style="padding:6px 10px;font-weight:600;background:var(--warn-light)">חדש מאז ההרצה הקודמת — '+fresh.length+'</div>';
+  body+= fresh.length ? drillTable(fresh) : '<div class="muted" style="padding:8px 10px">אין</div>';
+  if(!onlyNew){
+    body+='<div style="padding:6px 10px;font-weight:600;background:var(--navy-light)">ידוע — '+known.length+'</div>';
+    body+= known.length ? drillTable(known) : '<div class="muted" style="padding:8px 10px">אין</div>';
+  }
+  el.innerHTML=head+body;
+}
+
+/* ═══ ממתין להחלטה ═══ */
+async function loadPending(refresh, geocode){
+  $('#pend-addr').innerHTML='<div class="muted">טוען…</div>'; $('#pend-inst').innerHTML='';
+  try{
+    state.pending = await call({action:'preppending', refresh: refresh?1:0, geocode: geocode?1:0});
+    renderPending();
+    if(geocode) flash('גיאוקוד הוצע ל-'+state.pending.geocoded+' כתובות');
+  }catch(e){ $('#pend-addr').innerHTML='<div class="err" style="display:block">'+esc(e.message)+'</div>'; }
+}
+function renderPending(){
+  const p=state.pending; const items=p.items||[];
+  const addr=items.filter(i=>i.what==='address'), inst=items.filter(i=>i.what==='institution');
+  const st=state.status||{};
+  $('#pend-meta').textContent = (st.write_enabled?'':'מצב ניסיון — ההחלטה נכתבת למפתח; קואורדינטה לאתר ושורת השהיה אינן נכתבות. ')+
+    (st.registry ? 'במפתחות: '+st.registry.addresses+' כתובות, '+st.registry.institutions+' מוסדות'+(st.registry.seeded?' · נזרעו '+fmtTs(st.registry.seeded_at):'') : '');
+  const seed=$('#pend-seed');
+  if(st.registry && !st.registry.seeded){ seed.style.display=''; seed.innerHTML='<div class="strip warn">המפתחות טרם נזרעו. <button class="btn" onclick="seedRegistries()">זרע מהנתונים הקיימים</button> <span class="muted">אתרים עם קואורדינטה תקינה, סמלים עם שורה אחת, נרדפים, השהיות — פעם אחת.</span></div>'; }
+  else seed.style.display='none';
+  $('#pend-addr-n').textContent=addr.length; $('#pend-inst-n').textContent=inst.length;
+
+  $('#pend-addr').innerHTML = addr.length ? addr.map((it,idx)=>{
+    const pl=it.payload||{}, pr=it.proposal||{};
+    let prop='';
+    if(pr.type==='existing') prop='<span class="badge ok">קואורדינטה קיימת</span> '+esc(pr.note||'');
+    else if(pr.type==='geocode') prop='<span class="badge ok">גיאוקוד מחמיר</span> '+esc(pr.formatted||'')+' <span class="muted">('+esc(pr.location_type||'')+(pr.round?' · סבב '+esc(pr.round):'')+') '+pr.lat+', '+pr.lng+'</span>';
+    else if(pr.type==='nogeo') prop='<span class="badge bad">לא נמצא בגיאוקוד</span> <span class="muted">'+esc(pr.tried||'')+'</span>';
+    else if(pr.type==='similar') prop='';
+    else prop='<span class="muted">אין הצעה — ״הצע גיאוקוד״ או הדבק קואורדינטה</span>';
+    const sim = pr.similar || (pr.type==='similar'?pr:null);
+    const simHtml = sim ? '<div class="muted" style="margin-top:4px">כתיב דומה במפתח: <b>'+esc(sim.address||sim.key)+'</b> ← '+esc(sim.site_id)+' <button class="btn sec" data-act="addr-site" data-idx="'+idx+'" data-sid="'+esc(sim.site_id)+'">אותו אתר</button></div>' : '';
+    const canProp = pr.type==='existing' || pr.type==='geocode';
+    return '<div class="file" style="margin-bottom:8px">'+
+      '<div class="nm">'+esc(pl.address)+' <span class="muted">· '+esc(pl.site_id)+'</span></div>'+
+      '<div class="meta">'+esc(pl.institutions||'')+(pl.geo_status?' · '+esc(pl.geo_status):'')+' · '+fmtTs(it.created_at)+'</div>'+
+      '<div class="meta" style="margin-top:4px">הצעה: '+prop+'</div>'+simHtml+
+      '<div class="row" style="margin-top:6px">'+
+        (canProp?'<button class="btn" data-act="addr-proposal" data-idx="'+idx+'">אשר הצעה</button>':'')+
+        '<input class="form-input" placeholder="lat" style="max-width:120px" id="pa-lat-'+idx+'"><input class="form-input" placeholder="lng" style="max-width:120px" id="pa-lng-'+idx+'">'+
+        '<button class="btn sec" data-act="addr-manual" data-idx="'+idx+'">כתוב קואורדינטה</button>'+
+        '<input class="form-input" placeholder="site_id קיים" style="max-width:160px" id="pa-site-'+idx+'"><button class="btn sec" data-act="addr-site" data-idx="'+idx+'">מפה לאתר קיים</button>'+
+      '</div></div>';
+  }).join('') : '<div class="muted" style="padding:6px 0">אין כתובות ממתינות.</div>';
+
+  $('#pend-inst').innerHTML = inst.length ? inst.map((it,idx)=>{
+    const pl=it.payload||{}, pr=it.proposal||{};
+    const rows=pl.institutions||[];
+    const opts = rows.map(r=>'<option value="'+esc(r.institution_id)+'"'+(pr.institution_id===r.institution_id?' selected':'')+'>'+esc(r.institution_id)+' · '+esc(r.name)+(r.active?'':' (מושבת)')+'</option>').join('');
+    const prop = pr.type==='same' ? '<span class="badge ok">אותו מוסד</span> '+esc(pr.name||'')
+              : pr.type==='review' ? '<span class="badge warn">לבדיקה</span> '+esc(pr.note||'')+' — בגיליון: '+esc(pr.name||'')
+              : '<span class="badge bad">הסמל אינו במוסדות</span>';
+    return '<div class="file" style="margin-bottom:8px">'+
+      '<div class="nm">'+esc(pl.symbol)+' · '+esc(pl.name)+(pl.paused?' <span class="badge warn">בהשהיה: '+esc(pl.paused)+'</span>':'')+'</div>'+
+      '<div class="meta">'+esc(pl.files||'')+' · '+pl.assistants+' סייעות · '+fmtTs(it.created_at)+'</div>'+
+      '<div class="meta" style="margin-top:4px">הצעה: '+prop+'</div>'+
+      '<div class="row" style="margin-top:6px">'+
+        (rows.length?'<select class="form-input" style="max-width:320px" id="pi-id-'+idx+'">'+opts+'</select>'
+                    +'<button class="btn" data-act="inst-same" data-idx="'+idx+'">אותו מוסד</button>'
+                    +'<button class="btn sec" data-act="inst-other" data-idx="'+idx+'">מוסד אחר (הנבחר)</button>':'')+
+        '<input class="form-input" placeholder="סיבת השהיה" style="max-width:200px" id="pi-reason-'+idx+'"><button class="btn danger" data-act="inst-paused" data-idx="'+idx+'">השהיה</button>'+
+      '</div></div>';
+  }).join('') : '<div class="muted" style="padding:6px 0">אין צירופי סמל+שם ממתינים.</div>';
+}
+document.addEventListener('click', async e=>{
+  const b=e.target.closest('[data-act]'); if(!b) return;
+  const act=b.dataset.act, idx=+b.dataset.idx;
+  const items=(state.pending&&state.pending.items)||[];
+  const list=act.indexOf('addr-')===0 ? items.filter(i=>i.what==='address') : items.filter(i=>i.what==='institution');
+  const it=list[idx]; if(!it) return;
+  const req={action:'prepdecide', what:it.what, key:it.key};
+  if(act==='addr-proposal') req.choice='proposal';
+  if(act==='addr-manual'){ req.choice='manual'; req.lat=$('#pa-lat-'+idx).value.trim(); req.lng=$('#pa-lng-'+idx).value.trim(); if(!req.lat||!req.lng) return flash('lat ו-lng — שניהם חובה', true); }
+  if(act==='addr-site'){ req.choice='site'; req.target_site_id=b.dataset.sid||$('#pa-site-'+idx).value.trim(); if(!req.target_site_id) return flash('חסר site_id', true); }
+  if(act==='inst-same'||act==='inst-other'){ req.decision= act==='inst-same'?'same':'other'; req.institution_id=$('#pi-id-'+idx).value; }
+  if(act==='inst-paused'){ req.decision='paused'; req.reason=$('#pi-reason-'+idx).value.trim()||'סמל לא ודאי'; }
+  b.disabled=true;
+  try{
+    const r=await call(req);
+    flash('נכתב למפתח ('+r.result+')'+(r.side_effects&&r.side_effects.length?' · '+r.side_effects.join(' · '):''), false, 6000);
+    state.pending.items = items.filter(i=>!(i.what===it.what&&i.key===it.key));
+    state.summary=null; renderPending(); loadStatus();
+  }catch(err){ flash(err.message, true, 8000); b.disabled=false; }
+});
+async function seedRegistries(){
+  if(!confirm('לזרוע את המפתחות מהנתונים הקיימים? פעם אחת; מה שאינו ודאי נשאר ממתין.')) return;
+  try{ const r=await call({action:'prepseed'}); flash('נזרעו: כתובות '+r.addresses+', מוסדות '+r.institutions+' · ממתין: '+r.pending_addresses+' כתובות, '+r.pending_institutions+' מוסדות', false, 9000); await loadStatus(); await loadPending(false); }
+  catch(e){ flash(e.message, true, 8000); }
 }
 
 /* ═══ השהיה ═══ */
