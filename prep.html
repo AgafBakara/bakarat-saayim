@@ -150,9 +150,9 @@ th{background:#f3f4f6;font-weight:600;position:sticky;top:0}
       <div class="card">
         <h2>ממתין להחלטה
           <button class="btn sec" onclick="loadPending(true)">רענן מהקבצים</button>
-          <button class="btn sec" onclick="loadPending(false,true)">הצע גיאוקוד (8)</button>
+          <button class="btn sec" onclick="loadPending(false)">טען עוד גיאוקוד</button>
         </h2>
-        <div class="muted">מחליטים פעם אחת. כתובת או צירוף (סמל, שם) שאושרו נכתבים למפתח ואינם חוזרים — לא כאן ולא כחריגה. ״רענן מהקבצים״ בונה את הרשימה מחדש מהאתרים ומקובצי המקור; ״הצע גיאוקוד״ מריץ גיאוקוד מחמיר לעד 8 כתובות בלי הצעה.</div>
+        <div class="muted">מחליטים פעם אחת. לכל פריט הצעה מוכנה עם הסיבה ורמת הביטחון — ביטחון גבוה קודם; לחיצה אחת מאשרת, או משנים. מה שאושר נכתב למפתח ואינו חוזר — לא כאן ולא כחריגה. ״רענן מהקבצים״ בונה את הרשימה מחדש; כל טעינה מריצה גיאוקוד מחמיר לעד 8 כתובות שטרם נבדקו.</div>
         <div id="pend-meta" class="muted" style="margin-top:6px"></div>
         <div id="pend-seed" style="display:none;margin-top:8px"></div>
         <h3 style="margin:14px 0 6px">כתובות <span class="badge" id="pend-addr-n"></span></h3>
@@ -485,64 +485,69 @@ function drill(i){
 }
 
 /* ═══ ממתין להחלטה ═══ */
-async function loadPending(refresh, geocode){
+async function loadPending(refresh){
   $('#pend-addr').innerHTML='<div class="muted">טוען…</div>'; $('#pend-inst').innerHTML='';
   try{
-    state.pending = await call({action:'preppending', refresh: refresh?1:0, geocode: geocode?1:0});
+    state.pending = await call({action:'preppending', refresh: refresh?1:0});
     renderPending();
-    if(geocode) flash('גיאוקוד הוצע ל-'+state.pending.geocoded+' כתובות');
   }catch(e){ $('#pend-addr').innerHTML='<div class="err" style="display:block">'+esc(e.message)+'</div>'; }
 }
+function confBadge(c){ return c==='high'?'<span class="badge ok">ביטחון גבוה</span>':c==='medium'?'<span class="badge warn">ביטחון בינוני</span>':'<span class="badge bad">אין הצעה</span>'; }
 function renderPending(){
   const p=state.pending; const items=p.items||[];
   const addr=items.filter(i=>i.what==='address'), inst=items.filter(i=>i.what==='institution');
   const st=state.status||{};
-  $('#pend-meta').textContent = (st.write_enabled?'':'מצב ניסיון — ההחלטה נכתבת למפתח; קואורדינטה לאתר ושורת השהיה אינן נכתבות. ')+
-    (st.registry ? 'במפתחות: '+st.registry.addresses+' כתובות, '+st.registry.institutions+' מוסדות'+(st.registry.seeded?' · נזרעו '+fmtTs(st.registry.seeded_at):'') : '');
+  $('#pend-meta').textContent = (st.write_enabled?'':'מצב ניסיון — ההחלטה נכתבת למפתח; קואורדינטה לאתר ושורת השהיה אינן נכתבות, והמפתח אינו משפיע על ההגרלה עד הדלקת הכתיבה. ')+
+    (st.registry ? 'במפתחות: '+st.registry.addresses+' כתובות, '+st.registry.institutions+' מוסדות'+(st.registry.seeded?' · הקיים נטען '+fmtTs(st.registry.seeded_at):'') : '')+
+    (p.geocoded?' · גיאוקוד רץ עכשיו ל-'+p.geocoded+' כתובות':'');
   const seed=$('#pend-seed');
-  if(st.registry && !st.registry.seeded){ seed.style.display=''; seed.innerHTML='<div class="strip warn">המפתחות טרם נזרעו. <button class="btn" onclick="seedRegistries()">זרע מהנתונים הקיימים</button> <span class="muted">אתרים עם קואורדינטה תקינה, סמלים עם שורה אחת, נרדפים, השהיות — פעם אחת.</span></div>'; }
+  if(st.registry && !st.registry.seeded){ seed.style.display=''; seed.innerHTML='<div class="strip warn">המפתחות עדיין ריקים. <button class="btn" onclick="seedRegistries()">טען קיים</button> <span class="muted">אתרים עם קואורדינטה תקינה, סמלים עם שורה אחת, נרדפים, השהיות — פעם אחת.</span></div>'; }
   else seed.style.display='none';
   $('#pend-addr-n').textContent=addr.length; $('#pend-inst-n').textContent=inst.length;
 
+  /* כתובות — ההצעה מסומנת; לחיצה אחת. סדר: כתיב דומה ← גיאוקוד ← מפות + הדבקה */
   $('#pend-addr').innerHTML = addr.length ? addr.map((it,idx)=>{
     const pl=it.payload||{}, pr=it.proposal||{};
-    let prop='';
-    if(pr.type==='existing') prop='<span class="badge ok">קואורדינטה קיימת</span> '+esc(pr.note||'');
-    else if(pr.type==='geocode') prop='<span class="badge ok">גיאוקוד מחמיר</span> '+esc(pr.formatted||'')+' <span class="muted">('+esc(pr.location_type||'')+(pr.round?' · סבב '+esc(pr.round):'')+') '+pr.lat+', '+pr.lng+'</span>';
-    else if(pr.type==='nogeo') prop='<span class="badge bad">לא נמצא בגיאוקוד</span> <span class="muted">'+esc(pr.tried||'')+'</span>';
-    else if(pr.type==='similar') prop='';
-    else prop='<span class="muted">אין הצעה — ״הצע גיאוקוד״ או הדבק קואורדינטה</span>';
-    const sim = pr.similar || (pr.type==='similar'?pr:null);
-    const simHtml = sim ? '<div class="muted" style="margin-top:4px">כתיב דומה במפתח: <b>'+esc(sim.address||sim.key)+'</b> ← '+esc(sim.site_id)+' <button class="btn sec" data-act="addr-site" data-idx="'+idx+'" data-sid="'+esc(sim.site_id)+'">אותו אתר</button></div>' : '';
-    const canProp = pr.type==='existing' || pr.type==='geocode';
+    let main='';
+    if(pr.type==='site') main='<button class="btn" data-act="addr-proposal" data-idx="'+idx+'">אשר: אותו אתר '+esc(pr.site_id)+'</button>';
+    else if(pr.type==='geocode') main='<button class="btn" data-act="addr-proposal" data-idx="'+idx+'">אשר: '+pr.lat+', '+pr.lng+'</button>';
+    else if(pr.geocode_pending) main='<span class="muted">גיאוקוד ירוץ בטעינה הבאה (8 בכל טעינה)</span>';
+    else main='<a class="btn sec" href="'+esc(pl.maps||'')+'" target="_blank" rel="noopener noreferrer">פתח במפות</a>';
     return '<div class="file" style="margin-bottom:8px">'+
-      '<div class="nm">'+esc(pl.address)+' <span class="muted">· '+esc(pl.site_id)+'</span></div>'+
-      '<div class="meta">'+esc(pl.institutions||'')+(pl.geo_status?' · '+esc(pl.geo_status):'')+' · '+fmtTs(it.created_at)+'</div>'+
-      '<div class="meta" style="margin-top:4px">הצעה: '+prop+'</div>'+simHtml+
-      '<div class="row" style="margin-top:6px">'+
-        (canProp?'<button class="btn" data-act="addr-proposal" data-idx="'+idx+'">אשר הצעה</button>':'')+
-        '<input class="form-input" placeholder="lat" style="max-width:120px" id="pa-lat-'+idx+'"><input class="form-input" placeholder="lng" style="max-width:120px" id="pa-lng-'+idx+'">'+
-        '<button class="btn sec" data-act="addr-manual" data-idx="'+idx+'">כתוב קואורדינטה</button>'+
-        '<input class="form-input" placeholder="site_id קיים" style="max-width:160px" id="pa-site-'+idx+'"><button class="btn sec" data-act="addr-site" data-idx="'+idx+'">מפה לאתר קיים</button>'+
+      '<div class="nm">'+esc(pl.address)+' <span class="muted">· '+esc(pl.site_id)+'</span> '+confBadge(pr.confidence)+'</div>'+
+      '<div class="meta">'+esc(pl.institutions||'')+' · '+esc(pl.geo_note||'')+' · '+fmtTs(it.created_at)+'</div>'+
+      '<div class="meta" style="margin-top:4px"><b>למה:</b> '+esc(pr.reason||'')+'</div>'+
+      '<div class="row" style="margin-top:6px">'+main+
+        ' <span class="muted" style="margin-inline-start:8px">או:</span>'+
+        '<input class="form-input" placeholder="lat" style="max-width:110px" id="pa-lat-'+idx+'"><input class="form-input" placeholder="lng" style="max-width:110px" id="pa-lng-'+idx+'">'+
+        '<button class="btn sec" data-act="addr-manual" data-idx="'+idx+'">הדבק קואורדינטה</button>'+
+        '<input class="form-input" placeholder="site_id קיים" style="max-width:150px" id="pa-site-'+idx+'"><button class="btn sec" data-act="addr-site" data-idx="'+idx+'">אתר קיים</button>'+
+        (pr.type!=='none'&&!pr.geocode_pending?'<a class="muted" href="'+esc(pl.maps||'')+'" target="_blank" rel="noopener noreferrer" style="margin-inline-start:8px">מפות</a>':'')+
       '</div></div>';
   }).join('') : '<div class="muted" style="padding:6px 0">אין כתובות ממתינות.</div>';
 
+  /* מוסדות — ההצעה מסומנת ב-select; לחיצה אחת. */
   $('#pend-inst').innerHTML = inst.length ? inst.map((it,idx)=>{
     const pl=it.payload||{}, pr=it.proposal||{};
     const rows=pl.institutions||[];
-    const opts = rows.map(r=>'<option value="'+esc(r.institution_id)+'"'+(pr.institution_id===r.institution_id?' selected':'')+'>'+esc(r.institution_id)+' · '+esc(r.name)+(r.active?'':' (מושבת)')+'</option>').join('');
-    const prop = pr.type==='same' ? '<span class="badge ok">אותו מוסד</span> '+esc(pr.name||'')
-              : pr.type==='review' ? '<span class="badge warn">לבדיקה</span> '+esc(pr.note||'')+' — בגיליון: '+esc(pr.name||'')
-              : '<span class="badge bad">הסמל אינו במוסדות</span>';
+    const sel = pr.institution_id||'';
+    const opts = rows.map(r=>'<option value="'+esc(r.institution_id)+'"'+(sel===r.institution_id?' selected':'')+'>'+esc(r.institution_id)+' · '+esc(r.name)+(r.active?'':' (מושבת)')+'</option>').join('')+
+      (sel&&!rows.some(r=>r.institution_id===sel)?'<option value="'+esc(sel)+'" selected>'+esc(sel)+' · '+esc(pr.name||'')+' (סמל '+esc(pr.symbol||'')+')</option>':'');
+    let main='';
+    if(pr.type==='same') main='<button class="btn" data-act="inst-decide" data-d="same" data-idx="'+idx+'">אשר: אותו מוסד</button>';
+    else if(pr.type==='other') main= pr.institution_id ? '<button class="btn" data-act="inst-decide" data-d="other" data-idx="'+idx+'">אשר: מוסד אחר — '+esc(pr.institution_id)+'</button>' : '<span class="badge warn">הסמל '+esc(pr.symbol||'')+' אינו במוסדות — הוסף אותו קודם (שלב 2)</span>';
+    else if(pr.type==='review') main='<span class="badge warn">לבדוק — הרוב הוא כנראה הטעות</span>';
+    else main='<button class="btn danger" data-act="inst-decide" data-d="paused" data-idx="'+idx+'">אשר: השהיה</button>';
     return '<div class="file" style="margin-bottom:8px">'+
-      '<div class="nm">'+esc(pl.symbol)+' · '+esc(pl.name)+(pl.paused?' <span class="badge warn">בהשהיה: '+esc(pl.paused)+'</span>':'')+'</div>'+
-      '<div class="meta">'+esc(pl.files||'')+' · '+pl.assistants+' סייעות · '+fmtTs(it.created_at)+'</div>'+
-      '<div class="meta" style="margin-top:4px">הצעה: '+prop+'</div>'+
-      '<div class="row" style="margin-top:6px">'+
-        (rows.length?'<select class="form-input" style="max-width:320px" id="pi-id-'+idx+'">'+opts+'</select>'
-                    +'<button class="btn" data-act="inst-same" data-idx="'+idx+'">אותו מוסד</button>'
-                    +'<button class="btn sec" data-act="inst-other" data-idx="'+idx+'">מוסד אחר (הנבחר)</button>':'')+
-        '<input class="form-input" placeholder="סיבת השהיה" style="max-width:200px" id="pi-reason-'+idx+'"><button class="btn danger" data-act="inst-paused" data-idx="'+idx+'">השהיה</button>'+
+      '<div class="nm">'+esc(pl.symbol)+' · '+esc(pl.name)+' '+confBadge(pr.confidence)+(pl.paused?' <span class="badge warn">בהשהיה: '+esc(pl.paused)+'</span>':'')+'</div>'+
+      '<div class="meta">'+esc(pl.files||'')+' · '+pl.assistants+' סייעות תחת השם הזה מתוך '+(pl.symbol_assistants||pl.assistants)+' בסמל · '+fmtTs(it.created_at)+'</div>'+
+      '<div class="meta" style="margin-top:4px"><b>למה:</b> '+esc(pr.reason||'')+'</div>'+
+      '<div class="row" style="margin-top:6px">'+main+
+        ' <span class="muted" style="margin-inline-start:8px">או:</span>'+
+        (opts?'<select class="form-input" style="max-width:300px" id="pi-id-'+idx+'">'+opts+'</select>'
+             +'<button class="btn sec" data-act="inst-decide" data-d="same" data-idx="'+idx+'">אותו מוסד</button>'
+             +'<button class="btn sec" data-act="inst-decide" data-d="other" data-idx="'+idx+'">מוסד אחר</button>':'')+
+        '<input class="form-input" placeholder="סיבת השהיה" style="max-width:180px" id="pi-reason-'+idx+'"><button class="btn sec" data-act="inst-decide" data-d="paused" data-idx="'+idx+'">השהיה</button>'+
       '</div></div>';
   }).join('') : '<div class="muted" style="padding:6px 0">אין צירופי סמל+שם ממתינים.</div>';
 }
@@ -555,9 +560,16 @@ document.addEventListener('click', async e=>{
   const req={action:'prepdecide', what:it.what, key:it.key};
   if(act==='addr-proposal') req.choice='proposal';
   if(act==='addr-manual'){ req.choice='manual'; req.lat=$('#pa-lat-'+idx).value.trim(); req.lng=$('#pa-lng-'+idx).value.trim(); if(!req.lat||!req.lng) return flash('lat ו-lng — שניהם חובה', true); }
-  if(act==='addr-site'){ req.choice='site'; req.target_site_id=b.dataset.sid||$('#pa-site-'+idx).value.trim(); if(!req.target_site_id) return flash('חסר site_id', true); }
-  if(act==='inst-same'||act==='inst-other'){ req.decision= act==='inst-same'?'same':'other'; req.institution_id=$('#pi-id-'+idx).value; }
-  if(act==='inst-paused'){ req.decision='paused'; req.reason=$('#pi-reason-'+idx).value.trim()||'סמל לא ודאי'; }
+  if(act==='addr-site'){ req.choice='site'; req.target_site_id=$('#pa-site-'+idx).value.trim(); if(!req.target_site_id) return flash('חסר site_id', true); }
+  if(act==='inst-decide'){
+    req.decision=b.dataset.d;
+    const sel=$('#pi-id-'+idx);
+    if(req.decision!=='paused'){
+      /* הכפתור הראשי מאשר את ההצעה; כפתורי ״או״ לוקחים את הבחירה ב-select */
+      req.institution_id = b.classList.contains('sec') ? (sel?sel.value:'') : ((it.proposal&&it.proposal.institution_id) || (sel?sel.value:''));
+      if(!req.institution_id) return flash('חסר מוסד יעד', true);
+    } else req.reason=$('#pi-reason-'+idx).value.trim()||'סמל לא ודאי';
+  }
   b.disabled=true;
   try{
     const r=await call(req);
@@ -567,8 +579,8 @@ document.addEventListener('click', async e=>{
   }catch(err){ flash(err.message, true, 8000); b.disabled=false; }
 });
 async function seedRegistries(){
-  if(!confirm('לזרוע את המפתחות מהנתונים הקיימים? פעם אחת; מה שאינו ודאי נשאר ממתין.')) return;
-  try{ const r=await call({action:'prepseed'}); flash('נזרעו: כתובות '+r.addresses+', מוסדות '+r.institutions+' · ממתין: '+r.pending_addresses+' כתובות, '+r.pending_institutions+' מוסדות', false, 9000); await loadStatus(); await loadPending(false); }
+  if(!confirm('לטעון למפתחות את מה שכבר ידוע מהנתונים הקיימים? פעם אחת; מה שאינו ודאי נשאר ממתין.')) return;
+  try{ const r=await call({action:'prepseed'}); flash('נטענו: כתובות '+r.addresses+', מוסדות '+r.institutions+' · ממתין: '+r.pending_addresses+' כתובות, '+r.pending_institutions+' מוסדות', false, 9000); await loadStatus(); await loadPending(false); }
   catch(e){ flash(e.message, true, 8000); }
 }
 
