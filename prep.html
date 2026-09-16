@@ -165,6 +165,10 @@ th{background:#f3f4f6;font-weight:600;position:sticky;top:0}
         <div id="pend-inst"></div>
         <h3 style="margin:14px 0 6px">מועמדים להשהיה <span class="badge" id="pend-pause-n"></span></h3>
         <div id="pend-pause"></div>
+        <h3 style="margin:14px 0 6px">כפילויות למחיקה <span class="badge" id="pend-dedupe-n"></span></h3>
+        <div id="pend-dedupe"></div>
+        <h3 style="margin:14px 0 6px">אתרים לאיחוד <span class="badge" id="pend-merge-n"></span></h3>
+        <div id="pend-merge"></div>
       </div>
     </div>
 
@@ -286,7 +290,7 @@ function renderStatus(){
   const s=state.status;
   $('#mode-badge').innerHTML = s.write_enabled ? '<span class="badge bad">כתיבה פעילה</span>' : '<span class="badge warn">מצב ניסיון</span>';
   $('#mode-strip').innerHTML = s.write_enabled
-    ? '<div class="strip bad">כתיבה פעילה — ״עבד״ מריץ את כל השלבים, כולל סנכרון, איחוד וניקוי. שתי עצירות בלבד — פער שנים ובלם ההשבתה — מופיעות ב״ממתין להחלטה״, ו״המשך״ מריץ את מה שחיכה.</div>'
+    ? '<div class="strip bad">כתיבה פעילה — ״עבד״ מריץ את כל השלבים; סנכרון וגיאוקוד מחמיר רצים לבד עם הבלמים. מחיקת כפילות ואיחוד אתרים — כל אחד פריט ב״ממתין להחלטה״, אישור אחד ונשמר במפתח. שתי עצירות: פער שנים ובלם ההשבתה.</div>'
     : '<div class="strip warn">מצב ניסיון — PREP_WRITE_ENABLED כבוי. כל שלב מריץ את הגרסה היבשה שלו; לשוניות הנתונים אינן נגעות.' +
       (s.folder ? '' : ' · <b>לא הוגדרה תיקיית עיבוד</b> — הרץ setupSplitBooks.') + '</div>';
   const yc=s.year_check||{};
@@ -473,7 +477,24 @@ function renderPending(){
   $('#pend-addr-n').textContent=addr.length; $('#pend-inst-n').textContent=inst.length;
   const stops=items.filter(i=>i.what==='year'||i.what==='deactivate'||i.what==='error');
   const sug=items.filter(i=>i.what==='suggested'), pause=items.filter(i=>i.what==='pause');
+  const dd=items.filter(i=>i.what==='dedupe'), mg=items.filter(i=>i.what==='merge');
   $('#pend-sug-n').textContent=sug.length; $('#pend-pause-n').textContent=pause.length;
+  $('#pend-dedupe-n').textContent=dd.length; $('#pend-merge-n').textContent=mg.length;
+  /* מחיקה ואיחוד — לא רצים לבד; אישור אחד, ונשמר במפתח */
+  $('#pend-dedupe').innerHTML = dd.length ? dd.map((it,idx)=>{
+    const pl=it.payload||{}, pr=it.proposal||{};
+    return '<div class="file" style="margin-bottom:8px"><div class="nm">'+esc(pl.symbol)+' '+confBadge(pr.confidence)+'</div>'+
+      '<div class="meta">נשאר: '+esc(pl.keep)+(pl.site_id?' · '+esc(pl.site_id):'')+' · למחיקה: '+(pl.del||[]).map(d=>esc(d.institution_id)+' ״'+esc(d.name)+'״'+(d.active?'':' (מושבת)')).join(', ')+'</div>'+
+      '<div class="meta" style="margin-top:4px"><b>למה:</b> '+esc(pr.reason||'')+'</div>'+
+      '<div class="row" style="margin-top:6px"><button class="btn danger" data-act="dedupe-apply" data-idx="'+idx+'">אשר: מחק '+(pl.del||[]).length+' שורות</button></div></div>';
+  }).join('') : '<div class="muted" style="padding:6px 0">אין כפילויות ממתינות.</div>';
+  $('#pend-merge').innerHTML = mg.length ? mg.map((it,idx)=>{
+    const pl=it.payload||{}, pr=it.proposal||{};
+    return '<div class="file" style="margin-bottom:8px"><div class="nm">'+esc(pl.address)+' '+confBadge(pr.confidence)+'</div>'+
+      '<div class="meta">נשאר: '+esc(pl.keeper)+' · מתאחדים: '+(pl.losers||[]).map(esc).join(', ')+' · מוסדות שיופנו ('+pl.moved+'): '+esc(pl.institutions||'')+'</div>'+
+      '<div class="meta" style="margin-top:4px"><b>למה:</b> '+esc(pr.reason||'')+'</div>'+
+      '<div class="row" style="margin-top:6px"><button class="btn danger" data-act="merge-apply" data-idx="'+idx+'">אשר: אחד לתוך '+esc(pl.keeper)+'</button></div></div>';
+  }).join('') : '<div class="muted" style="padding:6px 0">אין אתרים לאיחוד.</div>';
   $('#btn-continue').style.display = (state.status&&state.status.steps||[]).some(s=>!s.fresh) ? '' : 'none';
 
   /* עצירות — ראשונות. אחרי אישור: ״המשך״ */
@@ -560,6 +581,8 @@ document.addEventListener('click', async e=>{
              : act.indexOf('stop-')===0 ? items.filter(i=>i.what==='year'||i.what==='deactivate'||i.what==='error')
              : act==='sug-add' ? items.filter(i=>i.what==='suggested')
              : act==='pause-add' ? items.filter(i=>i.what==='pause')
+             : act==='dedupe-apply' ? items.filter(i=>i.what==='dedupe')
+             : act==='merge-apply' ? items.filter(i=>i.what==='merge')
              : items.filter(i=>i.what==='institution');
   const it=list[idx]; if(!it) return;
   const req={action:'prepdecide', what:it.what, key:it.key};

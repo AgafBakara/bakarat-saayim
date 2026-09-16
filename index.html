@@ -236,6 +236,9 @@ input, textarea, select { font-family: inherit; font-size: inherit; }
 .subject-grid .cell.wide { grid-column: 1 / -1; }
 .subject-grid .k { font-size: 11px; opacity: .82; }
 .subject-grid .v { font-size: 15px; font-weight: 600; margin-top: 1px; }
+/* מצב לכל תלמיד */
+.stu-row { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px 10px; margin-bottom: 8px; }
+.stu-row .stu-name { font-weight: 700; font-size: 14.5px; margin-bottom: 6px; }
 
 /* ============ QUESTIONS ============ */
 .q-block { background: var(--surface); border-radius: var(--radius); border: 1px solid var(--border); box-shadow: var(--shadow-sm); padding: 16px; margin-bottom: 12px; }
@@ -457,9 +460,11 @@ textarea.form-input { min-height: 84px; resize: vertical; line-height: 1.5; }
       <div class="subject-grid">
         <div class="cell"><div class="k">סוג הסייע</div><div class="v" id="sc-type">—</div></div>
         <div class="cell"><div class="k">כיתה</div><div class="v" id="sc-class">—</div></div>
-        <div class="cell wide"><div class="k">תלמיד משויך</div><div class="v" id="sc-student">—</div></div>
+        <div class="cell wide"><div class="k" id="sc-student-k">תלמיד משויך</div><div class="v" id="sc-student">—</div></div>
         <div class="cell"><div class="k">שעות משובצות</div><div class="v" id="sc-hours">—</div></div>
         <div class="cell"><div class="k">החתים כניסה</div><div class="v" id="sc-clock">—</div></div>
+        <!-- ת״ז הסייע/ת — מגיעה רק אחרי אימות המיקום, ואינה נשמרת במכשיר אחרי הבדיקה -->
+        <div class="cell wide"><div class="k">ת״ז לאימות מול הסייע/ת</div><div class="v" id="sc-aid" style="direction:ltr;text-align:right;letter-spacing:1px">—</div></div>
       </div>
     </div>
 
@@ -471,6 +476,8 @@ textarea.form-input { min-height: 84px; resize: vertical; line-height: 1.5; }
       <div class="sub-input hidden" id="q1-sub">
         <input class="form-input" id="q1-text" placeholder="">
       </div>
+      <div class="q-help strong" style="margin-top:12px">ת״ז אומתה מול הסייע/ת</div>
+      <div class="opt-list" id="idv-opts"></div>
     </div>
 
     <!-- Q2 -->
@@ -548,7 +555,7 @@ textarea.form-input { min-height: 84px; resize: vertical; line-height: 1.5; }
 const CONFIG = {
   API_URL: 'https://script.google.com/macros/s/AKfycby_m54KMPtMeNNlikGUYpCPTRRgWMDQy-3EfsVF0CkwIvmlIk1PaQljq1lJwDmYYk3J/exec',
   DEMO_MODE: false,
-  VERSION: '2.2',             // מוצגת במסך הכניסה — לזיהוי הקובץ שהועלה בפועל
+  VERSION: '2.3',             // מוצגת במסך הכניסה — לזיהוי הקובץ שהועלה בפועל
   CACHE_PREFIX: 'sayaControl_v1_',
   GEOFENCE_METERS: 75,          // רדיוס אישור הגעה
   GPS_MIN_ACCURACY: 30,         // דיוק גרוע מזה = חסימה
@@ -623,6 +630,13 @@ const NO_STUDENT_STATES  = ['absent', 'unknown', 'released'];
 /* התלמיד אינו בבית הספר מסיבה ידועה */
 const STUDENT_AWAY       = ['absent', 'released'];
 const AWAY_ONLY_ACTIVITY = 'reassigned';
+
+/* ״ת״ז אומתה מול הסייע/ת״ — תשובה אחת, חובה. זהה ל-ALLOWED_.id_verified בשרת. */
+const ID_VERIFY = [
+  { id: 'yes',     label: 'כן' },
+  { id: 'no',      label: 'לא' },
+  { id: 'skipped', label: 'לא נבדק' }
+];
 
 const VERIFY = [
   { id: 'teacher',   label: 'מחנכת הכיתה' },
@@ -1572,14 +1586,22 @@ function renderCheck() {
   $('#sc-inst').textContent    = i.name + ' · ' + i.type;
   $('#sc-name').textContent    = s.name;
   $('#sc-type').textContent    = s.type;
-  $('#sc-class').textContent   = s.klass;
-  $('#sc-student').textContent = s.student;
+  /* **סייע/ת עם כמה תלמידים באותו מוסד = יעד אחד.** כל התלמידים
+     מוצגים — שם וכיתה — ומצב נוכחות מסומן לכל אחד. */
+  const students = (Array.isArray(s.students) && s.students.length) ? s.students
+                 : (s.student ? [{ name: s.student, klass: s.klass || '' }] : []);
+  state.students = students;
+  $('#sc-class').textContent   = students.length === 1 ? (students[0].klass || '—') : (students.length ? students.length + ' תלמידים' : (s.klass || '—'));
+  $('#sc-student-k').textContent = students.length > 1 ? 'תלמידים משויכים' : 'תלמיד משויך';
+  $('#sc-student').textContent = students.length ? students.map(x => x.name + (students.length > 1 && x.klass ? ' (' + x.klass + ')' : '')).join(' · ') : (s.student || '—');
   $('#sc-hours').textContent   = s.hours;
   $('#sc-clock').textContent   = s.clockIn;
+  $('#sc-aid').textContent     = s.aid || '—';
+  renderOpts('#idv-opts', ID_VERIFY, 'idv');
 
   state.needsStudent = (s.needsStudent !== false) && s.type !== 'כיתתי';
   renderOpts('#q1-opts', PRESENCE, 'presence');
-  renderOpts('#q2-opts', STUDENT, 'student');
+  renderStudentOpts(students);
   renderOpts('#q3-opts', ACTIVITIES.map(a => ({ ...a, tag: tagFor(a.id) })), 'activity');
   renderOpts('#q4-opts', VERIFY, 'verify');
 
@@ -1609,15 +1631,43 @@ function renderOpts(sel, list, group) {
      </button>`).join('');
 }
 
+/* שאלה 2: רשימת מצב לכל תלמיד. קבוצה `student_<i>`; המצב המצרפי
+   ב-`answers.student` — נוכח אם אחד נוכח, אחרת לפי החומרה — הוא
+   מה שהשערים והסתירות רואים, והשרת מחשב אותו שוב בעצמו. */
+const STUDENT_RANK = { present: 0, unknown: 1, released: 2, absent: 3 };
+function renderStudentOpts(students) {
+  const el = $('#q2-opts');
+  state.answers.students = students.map(() => null);
+  $('#q2 .q-title').textContent = students.length > 1 ? '2. מצב התלמידים המשויכים (' + students.length + ')' : '2. מצב התלמיד המשויך';
+  if (students.length <= 1) { renderOpts('#q2-opts', STUDENT, 'student_0'); return; }
+  el.innerHTML = students.map((st, i) =>
+    `<div class="stu-row"><div class="stu-name">${esc(st.name)}${st.klass ? ' · ' + esc(st.klass) : ''}</div><div class="opt-list" id="q2-opts-${i}"></div></div>`).join('');
+  students.forEach((st, i) => renderOpts('#q2-opts-' + i, STUDENT, 'student_' + i));
+}
+function aggregateStudent() {
+  const list = state.answers.students || [];
+  if (!list.length) return state.answers.student || null;
+  if (list.some(x => !x)) return null;
+  return list.slice().sort((a, b) => STUDENT_RANK[a] - STUDENT_RANK[b])[0];
+}
+
 function pick(group, id) {
   $$(`[data-group="${group}"]`).forEach(b => b.classList.remove('selected', 'is-flag'));
   const btn = $(`[data-group="${group}"][data-id="${id}"]`);
   btn.classList.add('selected');
+  if (group.indexOf('student_') === 0) {
+    state.answers.students[Number(group.slice(8))] = id;
+    const opt = STUDENT.find(o => o.id === id);
+    if (opt && opt.flag) btn.classList.add('is-flag');
+    state.answers.student = aggregateStudent();
+    onStudent(state.answers.student, btn);
+    validate();
+    return;
+  }
   state.answers[group] = id;
 
   if (group === 'presence') onPresence(id, btn);
   if (group === 'activity') onActivity(id, btn);
-  if (group === 'student')  onStudent(id, btn);
   validate();
 }
 
@@ -1694,8 +1744,15 @@ function syncContradictions() {
 }
 
 function setOptDisabled(group, id, disabled, reason) {
+  if (group === 'student') {   // כל קבוצות התלמידים
+    $$(`[data-group^="student_"][data-id="${id}"]`).forEach(b => setOptDisabledBtn(b, disabled, reason));
+    return;
+  }
   const btn = $(`[data-group="${group}"][data-id="${id}"]`);
   if (!btn) return;
+  setOptDisabledBtn(btn, disabled, reason);
+}
+function setOptDisabledBtn(btn, disabled, reason) {
   if (disabled && !btn.classList.contains('selected')) {
     btn.style.opacity = '.4';
     btn.style.pointerEvents = 'none';
@@ -1708,10 +1765,10 @@ function setOptDisabled(group, id, disabled, reason) {
 }
 
 function onStudent(id, btn) {
-  const opt = STUDENT.find(o => o.id === id);
-  if (opt.flag) btn.classList.add('is-flag');
-  $('#q2-sub').classList.toggle('hidden', !opt.needsText);
-  if (opt.needsText) $('#q2-text').placeholder = opt.placeholder;
+  /* שדה הטקסט (שעת השחרור) נפתח כשאחד התלמידים שוחרר מוקדם */
+  const anyText = (state.answers.students || []).some(x => { const o = STUDENT.find(y => y.id === x); return o && o.needsText; });
+  $('#q2-sub').classList.toggle('hidden', !anyText);
+  if (anyText) $('#q2-text').placeholder = STUDENT.find(o => o.needsText).placeholder;
   syncActivityGate();
   syncContradictions();
 }
@@ -1721,8 +1778,9 @@ function validate() {
   const missing = [];
 
   if (!a.presence) missing.push('מצב הסייע');
+  if (!a.idv) missing.push('אימות ת״ז');
   if (a.presence === 'found' && !a.activity) missing.push('מה הסייע עושה');
-  if (state.needsStudent && !a.student) missing.push('מצב התלמיד');
+  if (state.needsStudent && !a.student) missing.push((state.students || []).length > 1 ? 'מצב כל התלמידים' : 'מצב התלמיד');
   if (!a.verify) missing.push('מי אישר');
 
   // "לא נמצא" מחייב אימות מול אדם מזוהה
@@ -1739,12 +1797,14 @@ function validate() {
     missing.push('״שובץ/ה מחדש״ אפשרי רק כשהתלמיד נעדר או שוחרר מוקדם');
 
   // שדות טקסט חובה
-  const needsText = { presence:'#q1-text', student:'#q2-text', activity:'#q3-text' };
+  const needsText = { presence:'#q1-text', activity:'#q3-text' };
   for (const [g, selr] of Object.entries(needsText)) {
-    const src = g === 'presence' ? PRESENCE : g === 'activity' ? ACTIVITIES : STUDENT;
+    const src = g === 'presence' ? PRESENCE : ACTIVITIES;
     const o = src.find(x => x.id === a[g]);
     if (o && o.needsText && !$(selr).value.trim()) missing.push(o.placeholder || 'פרטים נוספים');
   }
+  if ((a.students || []).some(x => { const o = STUDENT.find(y => y.id === x); return o && o.needsText; }) && !$('#q2-text').value.trim())
+    missing.push(STUDENT.find(o => o.needsText).placeholder);
 
   const bar = $('#missing-bar');
   if (missing.length) {
@@ -1814,12 +1874,13 @@ async function saveCheck() {
   const finalVerdict = (res && res.verdict) || verdict;
   const s = state.subject;
   state.checkedToday.push({
-    aid: s.aid, name: s.name, verdict: finalVerdict,
+    name: s.name, verdict: finalVerdict,
     secondsReveal: Math.round((Date.now() - state.revealTime) / 1000)
   });
   stopTimers();
   updateStats();
   showNext(s, finalVerdict);
+  $('#sc-aid').textContent = '—';   // הת״ז אינה נשארת על המסך אחרי הבדיקה
   btn.disabled = false; btn.textContent = 'שמור דיווח';
 }
 
@@ -1846,8 +1907,13 @@ async function queueRecord(meta) {
     distance_m:         state.arrival?.distance ?? '',
     gps_accuracy_m:     state.arrival?.accuracy ?? '',
     reveal_time:        state.revealTime ? new Date(state.revealTime).toISOString() : '',
-    assistant_id:       s?.aid || '',
+    /* הת״ז אינה במכשיר — השרת קושר את הדיווח למי שנחשף/ה דרך השיגור */
     assistant_name:     s?.name || '',
+    reveal_seq:         s?.reveal_seq || '',
+    id_verified:        a.idv || '',
+    students:           (state.students || []).length && meta.type === 'check'
+                          ? state.students.map((st, i) => ({ name: st.name, klass: st.klass || '', status: (a.students || [])[i] || '' }))
+                          : undefined,
     assistant_type:     s?.type || '',
     student_name:       s?.student || '',
     class:              s?.klass || '',
