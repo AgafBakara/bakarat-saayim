@@ -165,6 +165,9 @@ th{background:#f3f4f6;font-weight:600;position:sticky;top:0}
         <div id="pend-inst"></div>
         <h3 style="margin:14px 0 6px">מועמדים להשהיה <span class="badge" id="pend-pause-n"></span></h3>
         <div id="pend-pause"></div>
+        <h3 style="margin:14px 0 6px">החלטות לביצוע <span class="badge" id="pend-dec-n"></span></h3>
+        <div class="muted" id="pend-dec-note"></div>
+        <div id="pend-dec"></div>
         <h3 style="margin:14px 0 6px">כפילויות למחיקה <span class="badge" id="pend-dedupe-n"></span></h3>
         <div id="pend-dedupe"></div>
         <h3 style="margin:14px 0 6px">אתרים לאיחוד <span class="badge" id="pend-merge-n"></span></h3>
@@ -236,9 +239,17 @@ async function apiPost(payload){
   return withRetry_(() => fetch(CONFIG.API_URL,{method:'POST',body:JSON.stringify(payload),headers:{'Content-Type':'text/plain;charset=utf-8'}}));
 }
 async function apiGet(action){ return withRetry_(() => fetch(CONFIG.API_URL + '?' + new URLSearchParams({action}))); }
+const SERVING_LAYER_MSG = 'שכבת ההגשה של גוגל — נסה שוב';
+function servingLayerError(e){ return !!(e && (e.badResponse || e.servingLayer)); }
 async function call(payload){
   const r = await apiPost(payload);
-  if(!r.ok) throw new Error(r.error || 'הבקשה נדחתה');
+  if(!r || typeof r !== 'object'){ const e=new Error(SERVING_LAYER_MSG); e.servingLayer=true; throw e; }
+  if(!r.ok){
+    /* ״הבקשה נדחתה״ בלי סיבה = השרת לא זיהה את הפעולה או לא קיבל את
+       הגוף — מה שקורה כשהבקשה נשחקת בשכבת ההגשה; לא שגיאה בקוד */
+    if(!r.error || r.error==='הבקשה נדחתה'){ const e=new Error(SERVING_LAYER_MSG); e.servingLayer=true; throw e; }
+    throw new Error(r.error);
+  }
   return r.data;
 }
 function flash(msg, bad, ms){
@@ -291,7 +302,7 @@ function renderStatus(){
   $('#mode-badge').innerHTML = s.write_enabled ? '<span class="badge bad">כתיבה פעילה</span>' : '<span class="badge warn">מצב ניסיון</span>';
   $('#mode-strip').innerHTML = s.write_enabled
     ? '<div class="strip bad">כתיבה פעילה — ״עבד״ מריץ את כל השלבים; סנכרון וגיאוקוד מחמיר רצים לבד עם הבלמים. מחיקת כפילות ואיחוד אתרים — כל אחד פריט ב״ממתין להחלטה״, אישור אחד ונשמר במפתח. שתי עצירות: פער שנים ובלם ההשבתה.</div>'
-    : '<div class="strip warn">מצב ניסיון — PREP_WRITE_ENABLED כבוי. כל שלב מריץ את הגרסה היבשה שלו; לשוניות הנתונים אינן נגעות.' +
+    : '<div class="strip warn">מצב ניסיון — PREP_WRITE_ENABLED כבוי. כל שלב מריץ את הגרסה היבשה שלו; לשוניות הנתונים אינן נגעות. אישורים ב״ממתין להחלטה״ נשמרים כהחלטות לביצוע' + (s.decisions?' ('+s.decisions+' ממתינות)':'') + '.' +
       (s.folder ? '' : ' · <b>לא הוגדרה תיקיית עיבוד</b> — הרץ setupSplitBooks.') + '</div>';
   const yc=s.year_check||{};
   $('#year-badge').className = 'badge ' + (yc.ok ? 'ok' : 'bad');
@@ -335,11 +346,30 @@ async function runAll(resume){
   try{
     await loadStatus();
     const s=state.status;
+    state.seedError='';
     if(s.registry && !s.registry.seeded){
       log.push('טוען קיים…');
-      try{ const r=await call({action:'prepseed'}); log.push('נטענו: כתובות '+r.addresses+', מוסדות '+r.institutions); }
-      catch(e){ log.push('טען קיים נכשל: '+e.message); }
+      setStep('validate','','טוען קיים…','<span class="badge">טען קיים</span>');
+      try{ const r=await withStepRetry(()=>call({action:'prepseed'})); log.push('נטענו: כתובות '+r.addresses+', מוסדות '+r.institutions+' · ממתין: '+r.pending_addresses+' כתובות, '+r.pending_institutions+' מוסדות'); }
+      catch(e){ state.seedError=e.message; log.push('טען קיים נכשל: '+e.message); flash('טען קיים נכשל: '+e.message, true, 9000); }
       await loadStatus();
+    }
+    /* כתיבה דלוקה: קודם ההחלטות שאושרו בניסיון — רשימה, אישור אחד, ביצוע לפי הסדר */
+    if(state.status.write_enabled){
+      const dl=await call({action:'prepdecisions'});
+      if(dl.pending.length){
+        const txt='החלטות לביצוע: '+dl.pending.length+'\n\n'+dl.pending.map((d,i)=>(i+1)+'. ['+d.label+'] '+d.summary).join('\n')+'\n\nלבצע את כולן לפי הסדר?';
+        if(!confirm(txt)){ log.push('ההחלטות לא בוצעו — ההרצה בוטלה'); throw new Error('בוטל לפני ביצוע ההחלטות'); }
+        let ex;
+        try{ ex=await call({action:'prepexecute'}); }
+        catch(e){
+          /* הביצוע הוא כתיבה: תשובה שאבדה אינה אומרת שלא בוצע. לא מנסים שוב לבד — בודקים. */
+          if(servingLayerError(e)) throw new Error('לא ידוע אם ההחלטות בוצעו — בדוק בלשונית ״החלטות לביצוע״ (done / failed / pending) ולחץ ״עבד״ שוב; מה שבוצע לא יבוצע פעמיים');
+          throw e;
+        }
+        log.push('החלטות: בוצעו '+ex.done+' · נכשלו '+ex.failed+(ex.failed?'\n'+ex.items.filter(i=>!i.ok).map(i=>'  ✗ '+i.summary+' — '+i.error).join('\n'):''));
+        await loadStatus();
+      }
     }
     const results={};
     for(const st of state.status.steps){
@@ -350,9 +380,9 @@ async function runAll(resume){
       setStep(st.key,'','רץ…','<span class="badge">רץ</span>');
       let r;
       try{
-        r=await call({action:'preprun', step:st.key, force:1, auto:1});
-        if(r.ok && r.needs_confirm && state.status.write_enabled) r=await call({action:'preprun', step:st.key, force:1, auto:1, confirm:r.needs_confirm});
-      }catch(e){ r={ok:false, error:e.message, blocked:'error'}; }
+        r=await withStepRetry(()=>call({action:'preprun', step:st.key, force:1, auto:1}), st);
+        if(r.ok && r.needs_confirm && state.status.write_enabled) r=await withStepRetry(()=>call({action:'preprun', step:st.key, force:1, auto:1, confirm:r.needs_confirm}), st);
+      }catch(e){ r={ok:false, error: servingLayerError(e) ? 'שכבת ההגשה נכשלה 3 פעמים — לא ידוע אם השלב בוצע; בדוק ביומן (' + st.key + ') ולחץ ״המשך״' : e.message, blocked:'error'}; }
       results[st.key]=r;
       if(r.ok) setStep(st.key,'done', stepSummary(r), r.dry?'<span class="badge">ניסיון</span>':'<span class="badge ok">הושלם</span>');
       else if(r.blocked==='year') setStep(st.key,'locked','פער שנים — ממתין להחלטה','<span class="badge bad">ממתין להחלטה</span>');
@@ -367,6 +397,17 @@ async function runAll(resume){
   finally{ state.running=false; if(btn){ btn.disabled=false; btn.textContent='עבד'; } if(cont) cont.disabled=false; }
 }
 function stepLabel(k){ const st=(state.status.steps||[]).filter(x=>x.key===k)[0]; return st?st.label:k; }
+/* כשל של שכבת ההגשה (דף שגיאה, או ״נדחתה״ בלי סיבה) — עד 3 ניסיונות לשלב, לפני ״נכשל״ */
+async function withStepRetry(fn, st){
+  for(let n=1;;n++){
+    try{ return await fn(); }
+    catch(e){
+      if(!servingLayerError(e) || n>=3) throw e;
+      if(st) setStep(st.key,'',SERVING_LAYER_MSG+' · ניסיון '+(n+1)+' מתוך 3','<span class="badge warn">מנסה שוב</span>');
+      await sleep_(3000*n);
+    }
+  }
+}
 function stepSummary(r){
   if(r.sync) return 'נכתבו '+r.sync.written+' · נוספו '+r.sync.added+' · הושבתו '+r.sync.deactivated+' · שעות השתנו '+r.sync.changed;
   if(r.dry_run) return 'ניסיון: '+r.dry_run.rows+' תקינות · '+r.dry_run.rejected+' נדחו';
@@ -460,6 +501,7 @@ async function loadPending(refresh){
   $('#pend-addr').innerHTML='<div class="muted">טוען…</div>'; $('#pend-inst').innerHTML='';
   try{
     state.pending = await call({action:'preppending', refresh: refresh?1:0});
+    try{ state.decisions = await call({action:'prepdecisions'}); }catch(e){ state.decisions={pending:[],recent:[]}; }
     renderPending();
   }catch(e){ $('#pend-addr').innerHTML='<div class="err" style="display:block">'+esc(e.message)+'</div>'; }
 }
@@ -468,12 +510,19 @@ function renderPending(){
   const p=state.pending; const items=p.items||[];
   const addr=items.filter(i=>i.what==='address'), inst=items.filter(i=>i.what==='institution');
   const st=state.status||{};
-  $('#pend-meta').textContent = (st.write_enabled?'':'מצב ניסיון — ההחלטה נכתבת למפתח; קואורדינטה לאתר ושורת השהיה אינן נכתבות, והמפתח אינו משפיע על ההגרלה עד הדלקת הכתיבה. ')+
+  $('#pend-meta').textContent = (st.write_enabled?'':'מצב ניסיון — כל אישור נשמר כהחלטה לביצוע (״אושר — יבוצע בהדלקת כתיבה״); לא נכתב דבר — לא למפתח, לא לנתונים, ולא להגרלה. ')+
     (st.registry ? 'במפתחות: '+st.registry.addresses+' כתובות, '+st.registry.institutions+' מוסדות'+(st.registry.seeded?' · הקיים נטען '+fmtTs(st.registry.seeded_at):'') : '')+
     (p.geocoded?' · גיאוקוד רץ עכשיו ל-'+p.geocoded+' כתובות':'');
   const seed=$('#pend-seed');
-  if(st.registry && !st.registry.seeded){ seed.style.display=''; seed.innerHTML='<div class="strip warn">המפתחות עדיין ריקים. <button class="btn" onclick="seedRegistries()">טען קיים</button> <span class="muted">אתרים עם קואורדינטה תקינה, סמלים עם שורה אחת, נרדפים, השהיות — פעם אחת.</span></div>'; }
+  if(st.registry && !st.registry.seeded){ seed.style.display=''; seed.innerHTML='<div class="strip warn">המפתחות עדיין ריקים'+(state.seedError?' — ״טען קיים״ נכשל: '+esc(state.seedError):'')+'. <button class="btn" onclick="seedRegistries()">טען קיים</button> <span class="muted">אתרים עם קואורדינטה תקינה, סמלים עם שורה אחת, נרדפים, השהיות — פעם אחת.</span></div>'; }
   else seed.style.display='none';
+  /* החלטות לביצוע — מה שאושר בניסיון, ממתין להדלקת כתיבה; ניתן לבטל */
+  const dec=(state.decisions&&state.decisions.pending)||[];
+  $('#pend-dec-n').textContent=dec.length;
+  $('#pend-dec-note').textContent = dec.length ? (st.write_enabled ? 'יבוצעו בלחיצת ״עבד״ (או ״המשך״), אחרי אישור אחד, לפי הסדר: כתובות ← איחוד ← מוצעים ← מוסדות ← כפילויות ← השהיה.' : 'אושרו — יבוצעו בהדלקת כתיבה. עד אז לא נכתב דבר, לא למפתח ולא לנתונים.') : '';
+  $('#pend-dec').innerHTML = dec.length ? '<div class="drill"><table><tr><th></th><th>סוג</th><th>ההחלטה</th><th>מתי</th><th></th></tr>'+
+    dec.map((d,i)=>'<tr><td>'+(i+1)+'</td><td>'+esc(d.label)+'</td><td>'+esc(d.summary)+'</td><td>'+fmtTs(d.decided_at)+'</td><td><button class="btn sec" data-act="dec-cancel" data-idx="'+i+'">בטל</button></td></tr>').join('')+'</table></div>'
+    : '<div class="muted" style="padding:6px 0">אין החלטות ממתינות לביצוע.</div>';
   $('#pend-addr-n').textContent=addr.length; $('#pend-inst-n').textContent=inst.length;
   const stops=items.filter(i=>i.what==='year'||i.what==='deactivate'||i.what==='error');
   const sug=items.filter(i=>i.what==='suggested'), pause=items.filter(i=>i.what==='pause');
@@ -576,6 +625,14 @@ function renderPending(){
 document.addEventListener('click', async e=>{
   const b=e.target.closest('[data-act]'); if(!b) return;
   const act=b.dataset.act, idx=+b.dataset.idx;
+  if(act==='dec-cancel'){
+    const d=((state.decisions&&state.decisions.pending)||[])[idx]; if(!d) return;
+    if(!confirm('לבטל את ההחלטה: '+d.summary+'? הפריט יחזור ל״ממתין להחלטה״.')) return;
+    b.disabled=true;
+    try{ await call({action:'prepdecide', what:d.what, key:d.key, cancel:1}); flash('בוטל — הפריט חזר לרשימה'); await loadPending(true); await loadStatus(); }
+    catch(err){ flash(err.message, true, 8000); b.disabled=false; }
+    return;
+  }
   const items=(state.pending&&state.pending.items)||[];
   const list = act.indexOf('addr-')===0 ? items.filter(i=>i.what==='address')
              : act.indexOf('stop-')===0 ? items.filter(i=>i.what==='year'||i.what==='deactivate'||i.what==='error')
@@ -602,8 +659,9 @@ document.addEventListener('click', async e=>{
   b.disabled=true;
   try{
     const r=await call(req);
-    flash((r.result==='approved'?'אושר — לחץ ״המשך״':'נכתב ('+r.result+')')+(r.side_effects&&r.side_effects.length?' · '+r.side_effects.join(' · '):''), false, 6000);
+    flash((r.result==='approved'?'אושר — לחץ ״המשך״':r.queued?'אושר — יבוצע בהדלקת כתיבה':'בוצע ('+r.result+')')+(r.side_effects&&r.side_effects.length&&!r.queued?' · '+r.side_effects.join(' · '):''), false, 6000);
     state.pending.items = items.filter(i=>!(i.what===it.what&&i.key===it.key));
+    if(r.queued){ state.decisions=state.decisions||{pending:[]}; state.decisions.pending.push({what:it.what,key:it.key,label:'',summary:r.summary||'',decided_at:new Date().toISOString()}); }
     state.summary=null; renderPending(); loadStatus();
   }catch(err){ flash(err.message, true, 8000); b.disabled=false; }
 });
