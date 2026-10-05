@@ -224,6 +224,16 @@ input, textarea, select { font-family: inherit; font-size: inherit; }
 .timer-strip .t { font-weight: 700; color: var(--navy); font-variant-numeric: tabular-nums; }
 
 /* ============ SUBJECT CARD ============ */
+.btn-ghost { width: 100%; padding: 12px; border-radius: var(--radius-sm); border: 1px solid var(--border);
+  background: var(--surface); color: var(--text-muted); font-size: 14.5px; font-weight: 600; }
+.wa-sheet { position: fixed; inset: 0; background: rgba(15,23,42,.45); z-index: 95; display: flex; align-items: flex-end; }
+.wa-card { background: var(--surface); width: 100%; border-radius: 18px 18px 0 0; padding: 18px 16px calc(18px + env(safe-area-inset-bottom)); max-height: 92vh; overflow: auto; }
+.wa-title { font-size: 18px; font-weight: 700; }
+.wa-help { font-size: 13.5px; color: var(--text-muted); margin: 4px 0 12px; }
+.wa-label { display: block; font-size: 13px; font-weight: 600; margin: 10px 0 4px; }
+.wa-check { display: flex; gap: 8px; align-items: center; font-size: 14px; margin: 12px 0 2px; font-weight: 600; }
+.wa-actions { display: flex; gap: 10px; margin-top: 16px; }
+.wa-actions button { flex: 1; }
 .subject-card {
   background: linear-gradient(135deg, var(--teal) 0%, var(--teal-dark) 100%);
   color: white; border-radius: var(--radius); padding: 20px 16px; margin-bottom: 12px;
@@ -441,6 +451,7 @@ textarea.form-input { min-height: 84px; resize: vertical; line-height: 1.5; }
       <div class="gps-box" id="gps-box">מאתר מיקום…</div>
     </div>
     <button class="btn-arrive" id="btn-arrive" onclick="confirmArrival()" disabled>הגעתי</button>
+    <button class="btn-ghost" id="btn-wrong-address" onclick="openWrongAddress()" style="margin-top:10px">הכתובת לא תואמת למוסד</button>
     <div style="text-align:center;margin-top:14px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
       <button class="header-btn" style="background:var(--surface);color:var(--text-muted);border:1.5px solid var(--border)" onclick="reportBlocked()">לא ניתן להגיע / סורבה כניסה</button>
       <button class="header-btn" style="background:var(--surface);color:var(--text-muted);border:1.5px solid var(--border)" onclick="forfeitTarget()">ויתור על היעד</button>
@@ -448,6 +459,25 @@ textarea.form-input { min-height: 84px; resize: vertical; line-height: 1.5; }
     </div>
   </div>
 </section>
+
+<!-- ══════════ כתובת לא תואמת — עדות שטח, לא ממצא נגד סייע/ת ══════════ -->
+<div id="wrong-address-sheet" class="wa-sheet" style="display:none">
+  <div class="wa-card">
+    <div class="wa-title">הכתובת לא תואמת למוסד</div>
+    <div class="wa-help">דיווח על המיפוי, לא על הסייע/ת. המוסד יוצא מההגרלה עד בירור, ולא ייבדק כאן היום.</div>
+    <label class="wa-label">מה כתוב על הבניין <span style="color:var(--danger)">*</span></label>
+    <input class="form-input" id="wa-name" placeholder="שם המוסד שראית" autocomplete="off">
+    <label class="wa-label">הכתובת שמופיעה שם</label>
+    <input class="form-input" id="wa-addr" placeholder="רחוב ומספר, אם כתוב" autocomplete="off">
+    <label class="wa-check"><input type="checkbox" id="wa-moved"> המשכתי לבניין אחר ובדקתי שם</label>
+    <label class="wa-label">הערה</label>
+    <input class="form-input" id="wa-note" placeholder="אופציונלי" autocomplete="off">
+    <div class="wa-actions">
+      <button class="btn-cancel" onclick="closeWrongAddress()">חזרה</button>
+      <button class="btn-save" id="wa-send" onclick="sendWrongAddress()">שלח</button>
+    </div>
+  </div>
+</div>
 
 <!-- ══════════ CHECK ══════════ -->
 <section class="screen" id="screen-check">
@@ -555,7 +585,7 @@ textarea.form-input { min-height: 84px; resize: vertical; line-height: 1.5; }
 const CONFIG = {
   API_URL: 'https://script.google.com/macros/s/AKfycby_m54KMPtMeNNlikGUYpCPTRRgWMDQy-3EfsVF0CkwIvmlIk1PaQljq1lJwDmYYk3J/exec',
   DEMO_MODE: false,
-  VERSION: '2.3',             // מוצגת במסך הכניסה — לזיהוי הקובץ שהועלה בפועל
+  VERSION: '2.4',             // מוצגת במסך הכניסה — לזיהוי הקובץ שהועלה בפועל
   CACHE_PREFIX: 'sayaControl_v1_',
   GEOFENCE_METERS: 75,          // רדיוס אישור הגעה
   GPS_MIN_ACCURACY: 30,         // דיוק גרוע מזה = חסימה
@@ -1578,6 +1608,34 @@ function finishInstitution() {
   showScreen('home');
 }
 
+/* ═══ הכתובת לא תואמת למוסד ═══
+   עדות שטח על המיפוי. נשלחת **לפני החשיפה**, ולכן אין בה שם
+   סייע/ת כלל; השרת מוציא את המוסד מההגרלה ומעלה את הבירור
+   למסך העיבוד. אינה ממצא נגד סייעת ואינה סירוב כניסה. */
+function openWrongAddress(){
+  if(!state.assignment) return;
+  ['#wa-name','#wa-addr','#wa-note'].forEach(s=>{ const el=$(s); if(el) el.value=''; });
+  const mv=$('#wa-moved'); if(mv) mv.checked=false;
+  $('#wrong-address-sheet').style.display='flex';
+}
+function closeWrongAddress(){ $('#wrong-address-sheet').style.display='none'; }
+async function sendWrongAddress(){
+  const name=$('#wa-name').value.trim();
+  if(name.length<2){ toast('מה כתוב על הבניין — חובה', 'error'); return; }
+  const btn=$('#wa-send'); btn.disabled=true; btn.textContent='שולח…';
+  const i=state.assignment.institution;
+  try{
+    await queueRecord({ type:'wrong_address', verdict:'',
+      seen_name:name, seen_address:$('#wa-addr').value.trim(),
+      moved_on: $('#wa-moved').checked ? 'TRUE' : 'FALSE', note:$('#wa-note').value.trim() });
+    closeWrongAddress();
+    toast('נרשם. המוסד הוצא מההגרלה עד בירור — אין צורך לבדוק כאן.', '');
+    state.arrival=null;
+    finishInstitution();   // אותו מסלול חזרה כמו ״אין סייעים נוספים״
+  }catch(e){ toast(e.message,'error'); }
+  finally{ btn.disabled=false; btn.textContent='שלח'; }
+}
+
 /* ═══════════════════════════════════════════════════════════
    CHECK SCREEN
    ═══════════════════════════════════════════════════════════ */
@@ -1927,8 +1985,12 @@ async function queueRecord(meta) {
     student_text:       $('#q2-text')?.value.trim() || '',
     verified_by:        a.verify || '',
     verified_name:      $('#q4-text')?.value.trim() || '',
-    notes:              $('#q5-text')?.value.trim() || '',
+    notes:              meta.note !== undefined ? meta.note : ($('#q5-text')?.value.trim() || ''),
     reason:             (a.abort_reason || '').slice(0, 300),   // ביטול דיווח — חובה בשרת
+    /* ״הכתובת לא תואמת למוסד״ — עדות שטח; ריק בכל שאר הסוגים */
+    seen_name:          meta.seen_name || '',
+    seen_address:       meta.seen_address || '',
+    moved_on:           meta.moved_on || '',
     verdict:            meta.verdict,
     close_time:         nowISO(),   // מכשיר — השרת דורס
     seconds_dispatch_to_arrival: state.arrival ? Math.round((state.arrival.time - state.assignment.dispatchTime) / 1000) : '',
