@@ -152,25 +152,26 @@ th{background:#f3f4f6;font-weight:600;position:sticky;top:0}
           <button class="btn" id="btn-continue" onclick="runAll(true)">המשך</button>
           <button class="btn sec" onclick="loadPending(true)">רענן מהקבצים</button>
           <button class="btn sec" onclick="loadPending(false)">טען עוד גיאוקוד</button>
+          <button class="btn sec" onclick="writeReport()">כתוב דוח ללשונית</button>
         </h2>
         <div id="pend-stops"></div>
         <div class="muted">מחליטים פעם אחת. לכל פריט הצעה מוכנה עם הסיבה ורמת הביטחון — ביטחון גבוה קודם; לחיצה אחת מאשרת, או משנים. מה שאושר נכתב למפתח ואינו חוזר — לא כאן ולא כחריגה. ״רענן מהקבצים״ בונה את הרשימה מחדש; כל טעינה מריצה גיאוקוד מחמיר לעד 8 כתובות שטרם נבדקו.</div>
         <div id="pend-meta" class="muted" style="margin-top:6px"></div>
         <div id="pend-seed" style="display:none;margin-top:8px"></div>
-        <h3 style="margin:14px 0 6px">מוסדות מוצעים <span class="badge" id="pend-sug-n"></span></h3>
+        <h3 style="margin:14px 0 6px">מוסדות מוצעים <span class="badge" id="pend-sug-n"></span> <button class="btn sec" id="pend-sug-all" style="display:none" onclick="approveHigh('suggested')"></button></h3>
         <div id="pend-sug"></div>
-        <h3 style="margin:14px 0 6px">כתובות <span class="badge" id="pend-addr-n"></span></h3>
+        <h3 style="margin:14px 0 6px">כתובות <span class="badge" id="pend-addr-n"></span> <button class="btn sec" id="pend-addr-all" style="display:none" onclick="approveHigh('address')"></button></h3>
         <div id="pend-addr"></div>
-        <h3 style="margin:14px 0 6px">מוסדות — סמל + שם כפי שבקובץ <span class="badge" id="pend-inst-n"></span></h3>
+        <h3 style="margin:14px 0 6px">מוסדות — סמל + שם כפי שבקובץ <span class="badge" id="pend-inst-n"></span> <button class="btn sec" id="pend-inst-all" style="display:none" onclick="approveHigh('institution')"></button></h3>
         <div id="pend-inst"></div>
-        <h3 style="margin:14px 0 6px">מועמדים להשהיה <span class="badge" id="pend-pause-n"></span></h3>
+        <h3 style="margin:14px 0 6px">מועמדים להשהיה <span class="badge" id="pend-pause-n"></span> <button class="btn sec" id="pend-pause-all" style="display:none" onclick="approveHigh('pause')"></button></h3>
         <div id="pend-pause"></div>
         <h3 style="margin:14px 0 6px">החלטות לביצוע <span class="badge" id="pend-dec-n"></span></h3>
         <div class="muted" id="pend-dec-note"></div>
         <div id="pend-dec"></div>
-        <h3 style="margin:14px 0 6px">כפילויות למחיקה <span class="badge" id="pend-dedupe-n"></span></h3>
+        <h3 style="margin:14px 0 6px">כפילויות למחיקה <span class="badge" id="pend-dedupe-n"></span> <button class="btn sec" id="pend-dedupe-all" style="display:none" onclick="approveHigh('dedupe')"></button></h3>
         <div id="pend-dedupe"></div>
-        <h3 style="margin:14px 0 6px">אתרים לאיחוד <span class="badge" id="pend-merge-n"></span></h3>
+        <h3 style="margin:14px 0 6px">אתרים לאיחוד <span class="badge" id="pend-merge-n"></span> <button class="btn sec" id="pend-merge-all" style="display:none" onclick="approveHigh('merge')"></button></h3>
         <div id="pend-merge"></div>
       </div>
     </div>
@@ -529,6 +530,13 @@ function renderPending(){
   const dd=items.filter(i=>i.what==='dedupe'), mg=items.filter(i=>i.what==='merge');
   $('#pend-sug-n').textContent=sug.length; $('#pend-pause-n').textContent=pause.length;
   $('#pend-dedupe-n').textContent=dd.length; $('#pend-merge-n').textContent=mg.length;
+  /* ״אשר את כל הגבוהים״ — לכל קטע, רק כשיש כאלה. בינוני ו״אין״ נשארים אחד-אחד. */
+  [['pend-sug',sug],['pend-addr',addr],['pend-inst',inst],['pend-pause',pause],['pend-dedupe',dd],['pend-merge',mg]].forEach(([id,list])=>{
+    const b=$('#'+id+'-all'); if(!b) return;
+    const hi=list.filter(i=>i.proposal&&i.proposal.confidence==='high').length;
+    b.style.display = hi ? '' : 'none';
+    b.textContent = 'אשר את כל הגבוהים ('+hi+')';
+  });
   /* מחיקה ואיחוד — לא רצים לבד; אישור אחד, ונשמר במפתח */
   $('#pend-dedupe').innerHTML = dd.length ? dd.map((it,idx)=>{
     const pl=it.payload||{}, pr=it.proposal||{};
@@ -665,6 +673,28 @@ document.addEventListener('click', async e=>{
     state.summary=null; renderPending(); loadStatus();
   }catch(err){ flash(err.message, true, 8000); b.disabled=false; }
 });
+/* אישור קבוצתי: מציג כמה, ומאשר אותם כהחלטות ממתינות כרגיל */
+async function approveHigh(what){
+  const items=((state.pending&&state.pending.items)||[]).filter(i=>i.what===what&&i.proposal&&i.proposal.confidence==='high');
+  if(!items.length) return;
+  const label=({suggested:'מוסדות מוצעים',address:'כתובות',institution:'מוסדות',pause:'מועמדים להשהיה',dedupe:'כפילויות למחיקה',merge:'אתרים לאיחוד'})[what]||what;
+  const write=state.status&&state.status.write_enabled;
+  if(!confirm(label+': '+items.length+' פריטים, כולם ביטחון גבוה — אשר?\n\n'+
+     items.slice(0,8).map(i=>'· '+((i.payload&&(i.payload.address||((i.payload.symbol||'')+' '+(i.payload.name||''))))||i.key)+' — '+(i.proposal.reason||'')).join('\n')+
+     (items.length>8?'\n· … ועוד '+(items.length-8):'')+
+     (write?'\n\nהכתיבה דלוקה — יבוצעו מיד.':'\n\nיישמרו כהחלטות ממתינות; יבוצעו בהדלקת כתיבה.'))) return;
+  try{
+    const r=await call({action:'prepdecide', what, bulk:1});
+    flash('אושרו '+r.done+' מתוך '+r.total+(r.failed?' · נכשלו '+r.failed+': '+(r.errors||[]).join(' | '):''), !!r.failed, r.failed?10000:6000);
+    await loadPending(false); await loadStatus();
+  }catch(e){ flash(e.message, true, 8000); }
+}
+async function writeReport(){
+  try{
+    const r=await call({action:'prepreport'});
+    flash('נכתבו '+r.rows+' שורות ללשונית ״'+r.sheet+'״ בגיליון העיבוד · '+Object.keys(r.by_kind).map(k=>k+' '+r.by_kind[k]).join(' · '), false, 12000);
+  }catch(e){ flash(e.message, true, 8000); }
+}
 async function seedRegistries(){
   if(!confirm('לטעון למפתחות את מה שכבר ידוע מהנתונים הקיימים? פעם אחת; מה שאינו ודאי נשאר ממתין.')) return;
   try{ const r=await call({action:'prepseed'}); flash('נטענו: כתובות '+r.addresses+', מוסדות '+r.institutions+' · ממתין: '+r.pending_addresses+' כתובות, '+r.pending_institutions+' מוסדות', false, 9000); await loadStatus(); await loadPending(false); }
