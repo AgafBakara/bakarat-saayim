@@ -85,6 +85,10 @@ th{background:#f3f4f6;font-weight:600;position:sticky;top:0}
 .kpi .l{font-size:13px;color:var(--text-muted)}
 .drill{margin-top:12px;max-height:380px;overflow:auto;border:1px solid var(--border);border-radius:10px}
 .muted{color:var(--text-muted);font-size:13.5px}
+.geo-note{font-size:13.5px;font-weight:600}
+.geo-note.ok{color:#166534}
+.geo-note.bad{color:var(--danger)}
+.geo-note.dim{color:var(--text-muted);font-weight:400}
 .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .tabs{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap}
 .tab{padding:8px 14px;border-radius:999px;background:var(--surface);border:1px solid var(--border);font-weight:600}
@@ -175,7 +179,8 @@ th{background:#f3f4f6;font-weight:600;position:sticky;top:0}
         <div id="pend-inst"></div>
         <h3 style="margin:14px 0 6px">מועמדים להשהיה <span class="badge" id="pend-pause-n"></span> <button class="btn sec" id="pend-pause-all" style="display:none" onclick="approveHigh('pause')"></button></h3>
         <div id="pend-pause"></div>
-        <h3 style="margin:14px 0 6px">החלטות לביצוע <span class="badge" id="pend-dec-n"></span></h3>
+        <h3 style="margin:14px 0 6px">החלטות לביצוע <span class="badge" id="pend-dec-n"></span>
+          <button class="btn sec" id="pend-dec-all" style="display:none" onclick="cancelAllDecisions()"></button></h3>
         <div class="muted" id="pend-dec-note"></div>
         <div id="pend-dec"></div>
         <h3 style="margin:14px 0 6px">כפילויות למחיקה <span class="badge" id="pend-dedupe-n"></span> <button class="btn sec" id="pend-dedupe-all" style="display:none" onclick="approveHigh('dedupe')"></button></h3>
@@ -531,6 +536,9 @@ function renderPending(){
   /* החלטות לביצוע — מה שאושר בניסיון, ממתין להדלקת כתיבה; ניתן לבטל */
   const dec=(state.decisions&&state.decisions.pending)||[];
   $('#pend-dec-n').textContent=dec.length;
+  const decAll=$('#pend-dec-all');
+  decAll.style.display = dec.length ? '' : 'none';
+  decAll.textContent = 'בטל הכל ('+dec.length+')';
   $('#pend-dec-note').textContent = dec.length ? 'ייכללו בקובץ בלחיצת ״שמור וייצא״, לפי הסדר: כתובות ← איחוד ← מוצעים ← מוסדות ← כפילויות ← השהיה. הגיליון עצמו אינו משתנה.' : '';
   $('#pend-dec').innerHTML = dec.length ? '<div class="drill"><table><tr><th></th><th>סוג</th><th>ההחלטה</th><th>מתי</th><th></th></tr>'+
     dec.map((d,i)=>'<tr><td>'+(i+1)+'</td><td>'+esc(d.label)+'</td><td>'+esc(d.summary)+'</td><td>'+fmtTs(d.decided_at)+'</td><td><button class="btn sec" data-act="dec-cancel" data-idx="'+i+'">בטל</button></td></tr>').join('')+'</table></div>'
@@ -609,7 +617,7 @@ function renderPending(){
       '<div class="meta" style="margin-top:4px"><b>למה:</b> '+esc(pr.reason||'')+'</div>'+
       '<div class="row" style="margin-top:6px">'+main+
         ' <span class="muted" style="margin-inline-start:8px">או:</span>'+
-        '<input class="form-input" placeholder="lat" style="max-width:110px" id="pa-lat-'+idx+'"><input class="form-input" placeholder="lng" style="max-width:110px" id="pa-lng-'+idx+'">'+
+        geoField('pa-geo-'+idx)+
         '<button class="btn sec" data-act="addr-manual" data-idx="'+idx+'">הדבק קואורדינטה</button>'+
         '<input class="form-input" placeholder="site_id קיים" style="max-width:150px" id="pa-site-'+idx+'"><button class="btn sec" data-act="addr-site" data-idx="'+idx+'">אתר קיים</button>'+
         (pr.type!=='none'&&!pr.geocode_pending?'<a class="muted" href="'+esc(pl.maps||'')+'" target="_blank" rel="noopener noreferrer" style="margin-inline-start:8px">מפות</a>':'')+
@@ -665,7 +673,11 @@ document.addEventListener('click', async e=>{
   const req={action:'prepdecide', what:it.what, key:it.key};
   if(act==='stop-deactivate'){ req.phrase=$('#ps-phrase-'+idx).value.trim(); if(!req.phrase) return flash('הקלד את המשפט', true); }
   if(act==='addr-proposal') req.choice='proposal';
-  if(act==='addr-manual'){ req.choice='manual'; req.lat=$('#pa-lat-'+idx).value.trim(); req.lng=$('#pa-lng-'+idx).value.trim(); if(!req.lat||!req.lng) return flash('lat ו-lng — שניהם חובה', true); }
+  if(act==='addr-manual'){
+    const g=geoVal('pa-geo-'+idx);
+    if(!g.ok) return flash(g.raw?'לא זוהו שני מספרים בשדה הקואורדינטה':'הדבק קואורדינטה', true);
+    req.choice='manual'; req.lat=g.lat; req.lng=g.lng;
+  }
   if(act==='addr-site'){ req.choice='site'; req.target_site_id=$('#pa-site-'+idx).value.trim(); if(!req.target_site_id) return flash('חסר site_id', true); }
   if(act==='inst-decide'){
     req.decision=b.dataset.d;
@@ -685,6 +697,69 @@ document.addEventListener('click', async e=>{
     state.summary=null; renderPending(); loadStatus();
   }catch(err){ flash(err.message, true, 8000); b.disabled=false; }
 });
+/* ── שדה קואורדינטה אחד ───────────────────────────────────────
+ * מגוגל מפות מעתיקים מחרוזת אחת, ופיצול ידני לשני שדות בכל
+ * הדבקה הוא בדיוק המקום שבו מתחלפים lat ו-lng. השדה מקבל פסיק,
+ * רווח, או טקסט מסביב, ומחלץ את שני המספרים; הוא מציג מיד מה
+ * הוא הבין ואם זה בתוך בני ברק. **השרת מאמת שוב** — הגבול כאן
+ * הוא תצוגה, ו-`inBneiBrak_` ב-`Sync.gs` הוא הקובע.
+ * ─────────────────────────────────────────────────────────── */
+const BB_BOX = { latMin:32.060, latMax:32.110, lngMin:34.810, lngMax:34.860 };
+const inBB = (lat,lng) => lat>=BB_BOX.latMin && lat<=BB_BOX.latMax && lng>=BB_BOX.lngMin && lng<=BB_BOX.lngMax;
+function parseGeo(text){
+  const nums=(String(text||'').replace(/[\u200e\u200f\u202a-\u202e]/g,'').match(/-?\d{1,3}(?:\.\d+)?/g)||[])
+    .map(Number).filter(n=>isFinite(n));
+  const out={ n:nums.length, lat:null, lng:null, swapped:false };
+  /* הזוג הראשון שנראה כמו (lat, lng) בישראל — כך שטקסט מסביב,
+     כולל כתובת עם מספר בית או URL של מפות, אינו מבלבל */
+  for(let i=0;i+1<nums.length;i++){
+    const x=nums[i], y=nums[i+1];
+    if(x>=31&&x<=33&&y>=34&&y<=36){ out.lat=x; out.lng=y; return out; }
+  }
+  for(let i=0;i+1<nums.length;i++){
+    const x=nums[i], y=nums[i+1];
+    if(x>=34&&x<=36&&y>=31&&y<=33){ out.lat=x; out.lng=y; out.swapped=true; return out; }
+  }
+  if(nums.length>=2){ out.lat=nums[0]; out.lng=nums[1]; out.swapped=!(out.lat>=31&&out.lat<=33)&&(out.lng>=31&&out.lng<=33); }
+  return out;
+}
+function geoField(id, ph){
+  return '<input class="form-input" id="'+id+'" data-geo="1" placeholder="'+esc(ph||'הדבק קואורדינטה: 32.0859, 34.8272')+'" style="max-width:230px">'+
+         '<button class="btn sec" data-geoswap="'+id+'" id="'+id+'-swap" style="display:none">החלף lat/lng</button>'+
+         '<span class="geo-note dim" id="'+id+'-note"></span>';
+}
+function geoRender(id){
+  const el=$('#'+id), note=$('#'+id+'-note'), swap=$('#'+id+'-swap');
+  if(!el||!note) return;
+  if(swap) swap.style.display='none';
+  const raw=el.value.trim();
+  if(!raw){ note.className='geo-note dim'; note.textContent=''; return; }
+  const g=parseGeo(raw);
+  if(g.lat===null){ note.className='geo-note bad'; note.textContent='לא זוהו שני מספרים — הדבק ״32.0859, 34.8272״'; return; }
+  const txt=g.lat+', '+g.lng;
+  if(g.lat<31||g.lat>33){
+    note.className='geo-note bad';
+    note.textContent=txt+' · נראה שהחלפת lat ו-lng';
+    if(swap&&g.lng>=31&&g.lng<=33) swap.style.display='';
+    return;
+  }
+  if(inBB(g.lat,g.lng)){ note.className='geo-note ok'; note.textContent=txt+' · בתוך בני ברק ✓'; }
+  else { note.className='geo-note bad'; note.textContent=txt+' · מחוץ לתחום — בדוק'; }
+}
+/** הערך לשליחה. השרת מאמת שוב, ולכן זו נוחות ולא הגנה. */
+function geoVal(id){
+  const el=$('#'+id);
+  const g=parseGeo(el?el.value:'');
+  return { lat: g.lat===null?'':String(g.lat), lng: g.lng===null?'':String(g.lng), ok: g.lat!==null, raw: el?el.value.trim():'' };
+}
+document.addEventListener('input', ev=>{ const el=ev.target.closest('[data-geo]'); if(el&&el.id) geoRender(el.id); });
+document.addEventListener('click', ev=>{
+  const b=ev.target.closest('[data-geoswap]'); if(!b) return;
+  const el=$('#'+b.dataset.geoswap); if(!el) return;
+  const g=parseGeo(el.value);
+  if(g.lat!==null){ el.value=g.lng+', '+g.lat; geoRender(el.id); }
+});
+
 /* ── שתי הכתובות בפריט ״מוסדות״ ──
    שני סמלים באותה כתובת = מתחם אחד, ו״אותו מוסד״ סביר; כתובות
    שונות = שני מקומות, והשרת מציע השהיה. ״אין כתובת״ נאמר במפורש,
@@ -755,8 +830,7 @@ function renderFind(){
       lines.join('')+
       '<div class="row" style="margin-top:8px">'+
         '<input class="form-input" id="find-addr-'+idx+'" placeholder="כתובת מתוקנת" style="max-width:230px" value="'+esc(it.address)+'">'+
-        '<input class="form-input" id="find-lat-'+idx+'" placeholder="lat" style="max-width:110px">'+
-        '<input class="form-input" id="find-lng-'+idx+'" placeholder="lng" style="max-width:110px">'+
+        geoField('find-geo-'+idx)+
         '<button class="btn" data-fact="fix" data-idx="'+idx+'">שמור תיקון</button>'+
       '</div>'+
       '<div class="row" style="margin-top:6px">'+
@@ -776,10 +850,10 @@ document.addEventListener('click', async ev=>{
   const act=b.dataset.fact;
   let req={action:'prepdecide'};
   if(act==='fix'){
-    const addr=$('#find-addr-'+idx).value.trim(), lat=$('#find-lat-'+idx).value.trim(), lng=$('#find-lng-'+idx).value.trim();
-    if(!addr && !(lat&&lng)) return flash('כתובת, או lat ו-lng — שניהם', true);
-    if((lat&&!lng)||(lng&&!lat)) return flash('lat ו-lng — שניהם חובה', true);
-    req=Object.assign(req,{what:'sitefix', site_id:it.site_id, institution_id:it.institution_id, name:it.name, address:addr, lat:lat, lng:lng});
+    const addr=$('#find-addr-'+idx).value.trim(), g=geoVal('find-geo-'+idx);
+    if(g.raw && !g.ok) return flash('לא זוהו שני מספרים בשדה הקואורדינטה', true);
+    if(!addr && !g.ok) return flash('כתובת, או קואורדינטה', true);
+    req=Object.assign(req,{what:'sitefix', site_id:it.site_id, institution_id:it.institution_id, name:it.name, address:addr, lat:g.lat, lng:g.lng});
   } else if(act==='pause'){
     req=Object.assign(req,{what:'pause', key:it.symbol, symbol:it.symbol, name:it.name, reason:$('#find-reason-'+idx).value});
   } else if(act==='unpause'){
@@ -811,6 +885,22 @@ async function exportToServer(){
     await loadStatus();
   }catch(e){ box.textContent='✗ '+e.message; flash(e.message, true, 9000); }
   finally{ btn.disabled=false; btn.textContent='שמור וייצא'+((state.status&&state.status.decisions)?' ('+state.status.decisions+' החלטות)':''); }
+}
+
+/* ביטול קבוצתי: מציג כמה ומה, ומחזיר את כולן ל״ממתין להחלטה״ */
+async function cancelAllDecisions(){
+  const dec=(state.decisions&&state.decisions.pending)||[];
+  if(!dec.length) return;
+  const by={}; dec.forEach(d=>{ const k=d.label||d.what; by[k]=(by[k]||0)+1; });
+  if(!confirm('בטל '+dec.length+' החלטות?\n\n'+Object.keys(by).map(k=>'· '+k+': '+by[k]).join('\n')+
+     '\n\nכולן יחזרו ל״ממתין להחלטה״ ולא ייכללו בקובץ. אפשר לאשר אותן שוב.')) return;
+  const b=$('#pend-dec-all'); b.disabled=true;
+  try{
+    const r=await call({action:'prepdecide', cancel_all:1});
+    flash('בוטלו '+r.cancelled+' החלטות — חזרו ל״ממתין להחלטה״'+(r.detail?' ('+r.detail+')':''), false, 8000);
+    await loadPending(true); await loadStatus();
+  }catch(e){ flash(e.message, true, 8000); }
+  finally{ b.disabled=false; }
 }
 
 /* אישור קבוצתי: מציג כמה, ומאשר אותם כהחלטות ממתינות כרגיל */
