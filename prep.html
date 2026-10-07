@@ -210,12 +210,16 @@ th{background:#f3f4f6;font-weight:600;position:sticky;top:0}
         <div class="muted">הקלד שם או סמל. מה שמוצג נאסף מכל מקום שהמערכת מחזיקה בו — אין צורך לפתוח לשונית.
           כל תיקון מכאן הוא החלטה שנכנסת לקובץ ב״שמור וייצא״, והגיליון אינו משתנה.</div>
         <div class="row" style="margin-top:10px">
-          <input class="form-input" id="find-q" placeholder="סמל מוסד, שם, או מזהה" style="max-width:360px"
+          <input class="form-input" id="find-q" placeholder="סמל מוסד, שם, או מזהה — ריק = כל המוסדות" style="max-width:360px"
                  onkeydown="if(event.key==='Enter')findInst()">
           <button class="btn" id="btn-find" onclick="findInst()">חפש</button>
+          <button class="btn sec" id="btn-find-clear" onclick="clearFind()">נקה</button>
+          <button class="btn sec" id="btn-list-csv" onclick="exportList()">ייצא רשימה</button>
           <span class="muted" id="find-meta"></span>
         </div>
         <div id="find-res" style="margin-top:12px"></div>
+        <div id="list-head" style="margin-top:12px"></div>
+        <div id="list-res"></div>
       </div>
     </div>
 
@@ -240,7 +244,7 @@ th{background:#f3f4f6;font-weight:600;position:sticky;top:0}
 const CONFIG = {
   API_URL: 'https://script.google.com/macros/s/AKfycby_m54KMPtMeNNlikGUYpCPTRRgWMDQy-3EfsVF0CkwIvmlIk1PaQljq1lJwDmYYk3J/exec',
 };
-const state = { token:null, name:null, inspectorId:null, role:null, tab:'files', status:null, summary:null, find:null };
+const state = { token:null, name:null, inspectorId:null, role:null, tab:'files', status:null, summary:null, find:null, list:null, listFilter:'' };
 const $  = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
@@ -318,7 +322,8 @@ function setTab(t){
   if(t==='summary' && !state.summary) loadSummary();
   if(t==='pending' && !state.pending) loadPending(false);
   if(t==='paused') renderPaused();
-  if(t==='find') setTimeout(()=>{ const e=$('#find-q'); if(e) e.focus(); }, 50);
+  if(t==='find'){ setTimeout(()=>{ const e=$('#find-q'); if(e) e.focus(); }, 50);
+    if(!$('#find-q').value.trim()) loadList(false); }
 }
 
 /* ═══ מצב ═══ */
@@ -777,11 +782,84 @@ function addrSides(pr, pl){
   return '<div class="meta" style="margin-top:4px">'+mine+tgt+verdict+'</div>';
 }
 
+/* ═══ כל המוסדות — התמונה המלאה, שורה לכל אחד ═══
+   ששת המצבים נקבעים בשרת (`institutionState_`), כדי שהרשימה,
+   הסינון, ה-CSV ודוח ״כתובות חשודות״ יתנו אותו מספר. */
+const STATE_CLASS = { ok:'ok', out:'bad', weak:'bad', no_geo:'warn', no_addr:'warn', paused:'warn' };
+async function loadList(force){
+  if(state.list && !force) return renderList();
+  $('#list-head').innerHTML='<div class="muted">טוען את כל המוסדות…</div>';
+  try{
+    state.list = await call({action:'preplist'});
+    state.listFilter = state.listFilter || '';
+    renderList();
+  }catch(e){ $('#list-head').innerHTML='<div class="strip bad">'+esc(e.message)+'</div>'; }
+}
+function listRows(){
+  const l=state.list; if(!l) return [];
+  return state.listFilter ? l.items.filter(i=>i.state===state.listFilter) : l.items;
+}
+function renderList(){
+  const l=state.list; if(!l) return;
+  const f=state.listFilter;
+  const chip=(key,label,n,cls)=>'<button class="btn '+((f===key)?'':'sec')+'" data-lf="'+esc(key)+'" style="padding:6px 12px">'+
+    esc(label)+' <b>'+n+'</b></button>';
+  $('#list-head').innerHTML =
+    (l.paused_ok===false?'<div class="strip bad">רשימת ההשהיה לא נקראה ('+esc(l.paused_error||'')+') — אף מוסד אינו מסומן מושהה</div>':'')+
+    '<div class="strip '+(l.risk?'bad':'ok')+'">'+
+      (l.risk? '<b>'+l.risk+'</b> מוסדות עלולים לשלוח מפקח למקום הלא נכון (קואורדינטה לא אמינה או מחוץ לתחום), ובהם '+l.risk_assistants+' סייעות'
+             : 'אין מוסד עם קואורדינטה לא אמינה או מחוץ לתחום')+
+    '</div>'+
+    '<div class="row" style="margin-bottom:8px">'+chip('','הכל',l.total)+
+      l.states.map(s=>chip(s.key,s.label,s.n)).join('')+
+      (f?'<span class="muted">מסונן: '+esc(({}[f])||l.states.filter(s=>s.key===f).map(s=>s.label)[0]||f)+'</span>':'')+
+    '</div>'+
+    '<div class="muted">מצב: <b>תקין</b> — כתובת וקואורדינטה בבני ברק · <b>קואורדינטה לא אמינה</b> — מרכז עיר, עיר אחרת, או מספר בית שונה מהגיאוקוד · '+
+      '<b>אין קואורדינטה</b> — אינו נכנס להגרלה · <b>מושהה</b>/<b>מחוץ לתחום</b> — אינו נשלח. מיון לפי מספר סייעות. לחיצה על שורה פותחת את הכרטיס.</div>';
+  const rows=listRows();
+  $('#list-res').innerHTML = '<div class="drill" style="max-height:620px"><table>'+
+    '<tr><th>סמל</th><th>שם</th><th>כתובת</th><th>קואורדינטה</th><th>סייעות</th><th>מצב</th></tr>'+
+    rows.map(i=>'<tr data-open="'+esc(i.institution_id)+'" style="cursor:pointer">'+
+      '<td>'+esc(i.symbol)+'</td>'+
+      '<td>'+esc(i.name||'(בלי שם)')+(i.active?'':' <span class="badge warn">מושבת</span>')+'</td>'+
+      '<td>'+(i.has_address?esc(i.address):'<span class="muted">אין</span>')+'</td>'+
+      '<td>'+(i.has_geo?'יש':'<span class="muted">אין</span>')+'</td>'+
+      '<td>'+i.assistants+'</td>'+
+      '<td><span class="badge '+(STATE_CLASS[i.state]||'')+'">'+esc(i.state_label)+'</span>'+
+        (i.state_detail?' <span class="muted">'+esc(i.state_detail)+'</span>':'')+'</td></tr>').join('')+
+    '</table></div>'+
+    '<div class="muted" style="margin-top:6px">'+rows.length+' שורות'+(f?' מתוך '+l.total:'')+'</div>';
+}
+function exportList(){
+  const rows=listRows();
+  if(!rows.length) return flash('אין שורות לייצוא', true);
+  const head=['סמל','שם','כתובת','site_id','lat','lng','סייעות פעילות','פעיל','מצב','פירוט'];
+  const cell=v=>{ const s=String(v===undefined||v===null?'':v); return /[",\n]/.test(s)? '"'+s.replace(/"/g,'""')+'"' : s; };
+  const csv='\ufeff'+[head.join(',')].concat(rows.map(i=>[i.symbol,i.name,i.address,i.site_id,i.lat,i.lng,
+      i.assistants,i.active?'TRUE':'FALSE',i.state_label,i.state_detail].map(cell).join(','))).join('\r\n');
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
+  a.download='מוסדות'+(state.listFilter?' — '+(state.list.states.filter(s=>s.key===state.listFilter).map(s=>s.label)[0]||''):'')+'.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 4000);
+  flash('יוצאו '+rows.length+' שורות', false, 5000);
+}
+function clearFind(){
+  $('#find-q').value=''; $('#find-res').innerHTML=''; $('#find-meta').textContent='';
+  state.find=null; loadList(false);
+}
+document.addEventListener('click', ev=>{
+  const chip=ev.target.closest('[data-lf]');
+  if(chip){ state.listFilter=chip.dataset.lf; renderList(); return; }
+  const row=ev.target.closest('[data-open]');
+  if(row){ $('#find-q').value=row.dataset.open; findInst(); }
+});
+
 /* ═══ מוסד — חיפוש ותיקון ═══ */
 const PAUSE_REASONS = ['מחוץ לתחום','גיאוקוד שגוי','סמל לא ודאי','מוסד בלי שם'];
 async function findInst(){
   const q=$('#find-q').value.trim();
-  if(!q){ $('#find-res').innerHTML=''; $('#find-meta').textContent=''; return; }
+  if(!q){ $('#find-res').innerHTML=''; $('#find-meta').textContent=''; return loadList(false); }
   $('#btn-find').disabled=true; $('#find-meta').textContent='מחפש…';
   try{
     const r=await call({action:'prepfind', q});
@@ -789,6 +867,7 @@ async function findInst(){
     $('#find-meta').textContent = r.total ? (r.total>r.shown ? 'נמצאו '+r.total+', מוצגים '+r.shown : 'נמצאו '+r.total)
                                           : 'לא נמצא מוסד בשם או בסמל הזה';
     renderFind();
+    const box=$('#find-res'); if(box && box.firstChild) box.scrollIntoView({block:'nearest'});
   }catch(e){ $('#find-meta').textContent=''; flash(e.message, true, 8000); }
   finally{ $('#btn-find').disabled=false; }
 }
@@ -865,7 +944,7 @@ document.addEventListener('click', async ev=>{
   try{
     const r=await call(req);
     flash('אושר — ייכלל בקובץ בייצוא הבא · '+(r.summary||''), false, 7000);
-    await findInst(); await loadStatus();
+    await findInst(); await loadStatus(); await loadList(true);
   }catch(e){ flash(e.message, true, 8000); b.disabled=false; }
 });
 
