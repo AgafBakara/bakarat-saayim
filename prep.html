@@ -143,9 +143,12 @@ th{background:#f3f4f6;font-weight:600;position:sticky;top:0}
       </div>
       <div class="card" id="export-card">
         <h2>שמור וייצא
+          <button class="btn" id="btn-finish" onclick="finishAll()" style="background:var(--navy);color:#fff">השלם הכל</button>
           <button class="btn" id="btn-export" onclick="exportToServer()">שמור וייצא</button>
           <span class="muted" style="font-size:13px">— שישה קובצי CSV לדרייב, עם כל ההחלטות שאישרת מוחלות עליהם. הגיליון הוא הטיוטה; הקובץ הוא התוצר, והוא מה שנטען לשרת.</span>
         </h2>
+        <div class="muted" style="margin-bottom:8px"><b>השלם הכל</b> — גיאוקוד לכל האתרים שאין להם קואורדינטה, סבב אחרי סבב עד שנגמר, ואז ייצוא. בלי בלמים ובלי הקלדות. אינו בונה מוסדות, אינו מסנכרן סייעים ואינו משהה.</div>
+        <div id="finish-log" class="result" style="display:none"></div>
         <div id="export-result" class="result" style="display:none"></div>
         <div id="export-files"></div>
       </div>
@@ -555,7 +558,15 @@ async function loadSummary(){
     state.summary = await call({action:'prepsummary'});
     const s=state.summary;
     $('#sum-meta').textContent = 'סייעים פעילים: '+s.roster_active+' שורות · בהשהיה: '+s.paused_assistants+' סייעות · סנכרון אחרון: '+(s.sync.run_at?fmtTs(s.sync.run_at)+' (נוספו '+s.sync.added+', הושבתו '+s.sync.deactivated+', שעות השתנו '+s.sync.changed+')':'—');
-    if(s.pending) $('#sum-meta').textContent += ' · ממתין להחלטה: '+(s.pending.address+s.pending.institution)+(s.registry?' · במפתחות: '+s.registry.addresses+' כתובות, '+s.registry.institutions+' מוסדות':'');
+    /* **מספר אחד, אחד בלבד.** כאן הוצג address+institution בעוד
+       שהבאדג׳ בכותרת מציג את הסך — שני מספרים שונים לאותו דבר
+       (1,141 מול 741), ואי אפשר לדעת מי מהם נכון. עכשיו: הסך,
+       והפירוט בסוגריים. */
+    if(s.pending) $('#sum-meta').textContent += ' · ממתין להחלטה: '+(s.pending.total||0)+
+      ' (כתובות '+(s.pending.address||0)+' · מוסדות '+(s.pending.institution||0)+
+      (s.pending.addrfile?' · קובץ הכתובות '+s.pending.addrfile:'')+
+      (s.pending.kindask?' · מגזר '+s.pending.kindask:'')+')'+
+      (s.registry?' · במפתחות: '+s.registry.addresses+' כתובות, '+s.registry.institutions+' מוסדות':'');
     renderSumGrid();
     $('#sum-drill').style.display='none';
   }catch(e){ $('#sum-grid').innerHTML='<div class="err" style="display:block">'+esc(e.message)+'</div>'; }
@@ -1110,6 +1121,60 @@ document.addEventListener('click', async ev=>{
     await findInst(); await loadStatus(); await loadList(true);
   }catch(e){ flash(e.message, true, 8000); b.disabled=false; }
 });
+
+/* ═══ השלם הכל ═══
+   סבב גיאוקוד אחרי סבב — השרת עוצר על תקציב זמן, הלקוח ממשיך
+   מעצמו — ואז ייצוא. עוצר מיד כשהשרת אומר שהמכסה היומית נגמרה,
+   כי המתנה לא תעזור היום. */
+async function finishAll(){
+  const b=$('#btn-finish'), log=$('#finish-log');
+  b.disabled=true; log.style.display='';
+  let rounds=0, geoOk=0, geoFail=0, fromKey=0;
+  const NL=String.fromCharCode(10);
+  const line = s => { log.textContent += s + NL; };
+  log.textContent='';
+  try{
+    for(let i=0;i<40;i++){
+      rounds++;
+      line('סבב ' + rounds + '…');
+      const r=await withStepRetry(()=>call({action:'prepfinish'}));
+      geoOk+=(r.geo&&r.geo.ok||0)+(r.geo&&r.geo.alt||0);
+      geoFail=(r.geo&&r.geo.failed||0);
+      fromKey+=(r.geo&&r.geo.from_key||0);
+      if(r.stage==='quota'){
+        line('⛔ **נגמרה המכסה היומית של הגיאוקוד.** נשארו '+r.remaining+' אתרים. המתנה לא תעזור היום — המשך מחר ב״השלם הכל״.');
+        flash('נגמרה המכסה היומית של הגיאוקוד — נשארו '+r.remaining, true, 12000);
+        break;
+      }
+      if(r.stage==='geocode'){
+        line('  גואוקדו עד כה: '+geoOk+' · נשארו '+r.remaining);
+        continue;
+      }
+      /* נגמר — ייצוא */
+      line('גיאוקוד הושלם: '+geoOk+' זוהו'+(fromKey?' ('+fromKey+' מהמפתח)':'')+' · '+geoFail+' לא עברו');
+      if(r.failures && r.failures.length){
+        line('');
+        line('מה שלא עבר, לפי סיבה:');
+        r.failures.forEach(f=>line('  · '+f.reason+': '+f.n+' אתרים (ובהם '+f.institutions+' מוסדות)'+(f.sample&&f.sample.length?' — '+f.sample.slice(0,3).join(' | '):'')));
+      }
+      const ex=r.export||{};
+      line('');
+      (ex.summary||[]).forEach(s=>line(s));
+      line('');
+      line('תיקייה: '+(ex.folder||''));
+      $('#export-files').innerHTML = (ex.files||[]).length
+        ? '<div class="drill" style="margin-top:10px"><table><tr><th>טבלה</th><th>קובץ</th><th>שורות</th><th></th></tr>'+
+          ex.files.map(f=>'<tr><td>'+esc(f.label)+'</td><td style="direction:ltr;text-align:right">'+esc(f.file)+'</td><td>'+f.rows+
+            '</td><td><a href="'+esc(f.url)+'" target="_blank" rel="noopener noreferrer">הורדה</a></td></tr>').join('')+
+          '</table></div><div class="row" style="margin-top:8px"><a class="btn sec" href="'+esc(ex.folder_url||'')+'" target="_blank" rel="noopener noreferrer">פתח את תיקיית הייצוא</a></div>'
+        : '';
+      flash('הושלם: '+geoOk+' גואוקדו · הקבצים בדרייב', false, 10000);
+      break;
+    }
+    await loadStatus();
+  }catch(e){ line('✗ '+e.message); flash(e.message, true, 10000); }
+  finally{ b.disabled=false; }
+}
 
 /* ייצוא לשרת — קורא מהגיליון, כותב לדרייב. אינו תלוי בכתיבה. */
 async function exportToServer(){
