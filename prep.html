@@ -171,6 +171,9 @@ th{background:#f3f4f6;font-weight:600;position:sticky;top:0}
         <div class="muted">מחליטים פעם אחת. לכל פריט הצעה מוכנה עם הסיבה ורמת הביטחון — ביטחון גבוה קודם; לחיצה אחת מאשרת, או משנים. מה שאושר נכתב למפתח ואינו חוזר — לא כאן ולא כחריגה. ״רענן מהקבצים״ בונה את הרשימה מחדש; כל טעינה מריצה גיאוקוד מחמיר לעד 8 כתובות שטרם נבדקו.</div>
         <div id="pend-meta" class="muted" style="margin-top:6px"></div>
         <div id="pend-seed" style="display:none;margin-top:8px"></div>
+        <h3 style="margin:14px 0 6px">מגזר להכרעה <span class="badge" id="pend-kind-n"></span></h3>
+        <div class="muted" id="pend-kind-note"></div>
+        <div id="pend-kind"></div>
         <h3 style="margin:14px 0 6px">קובץ הכתובות <span class="badge" id="pend-af-n"></span> <button class="btn sec" id="pend-af-all" style="display:none" onclick="approveHigh('addrfile')"></button></h3>
         <div class="muted" id="pend-af-note"></div>
         <div id="pend-af"></div>
@@ -456,6 +459,26 @@ function stepSummary(r){
 }
 
 /* ═══ העלאה ═══ */
+/* בורר סוג — מוצג כשהזיהוי נכשל, עם הכותרות שנמצאו בפועל */
+const UPLOAD_TYPES = [['addresses','כתובות'],['boys','בנים'],['girls','בנות'],['medical','רפואי']];
+function askType(filename, r){
+  return new Promise(res=>{
+    const box=document.createElement('div');
+    box.className='card';
+    box.style.cssText='position:fixed;inset-inline:5%;top:12%;max-width:760px;margin:auto;z-index:50;box-shadow:0 10px 40px rgba(0,0,0,.3)';
+    box.innerHTML='<h2>לא זוהה סוג הקובץ</h2>'+
+      '<div class="muted" style="margin-bottom:6px">'+esc(filename)+'</div>'+
+      '<div class="strip warn">'+esc(r.error||'')+'</div>'+
+      ((r.headers&&r.headers[0])?'<div class="muted" style="margin-bottom:8px"><b>כותרות בקובץ:</b> '+r.headers[0].map(esc).join(' · ')+'</div>':'')+
+      '<div class="row">'+UPLOAD_TYPES.map(t=>'<button class="btn" data-t="'+t[0]+'">'+t[1]+'</button>').join('')+
+      '<button class="btn sec" data-t="">בטל</button></div>';
+    box.addEventListener('click',ev=>{
+      const b=ev.target.closest('[data-t]'); if(!b) return;
+      box.remove(); res(b.dataset.t||'');
+    });
+    document.body.appendChild(box);
+  });
+}
 function fileToB64(f){ return new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(String(r.result).split(',')[1]||''); r.onerror=()=>rej(new Error('קריאת הקובץ נכשלה')); r.readAsDataURL(f); }); }
 async function uploadFiles(files){
   const log=$('#upload-log'); log.style.display=''; log.textContent='';
@@ -465,9 +488,15 @@ async function uploadFiles(files){
       const b64=await fileToB64(f);
       let r=await call({action:'prepupload', filename:f.name, b64});
       if(!r.saved){
-        const t=prompt((r.error||'')+'\n\nהקלד סוג: boys / girls / medical — או ביטול');
-        if(!t){ log.textContent += '  ✗ בוטל\n'; continue; }
-        r=await call({action:'prepupload', filename:f.name, b64, type:t.trim()});
+        /* **בורר ולא prompt.** `prompt` שנחסם בדפדפן או נסגר
+           בטעות החזיר null, והלוג אמר ״בוטל״ בלי לומר למה הקובץ
+           לא זוהה ובלי הכותרות שנמצאו — שתי ההעלאות הראשונות
+           של הקבצים החדשים נעצרו שם (14.10.2026). */
+        log.textContent += '  ✗ '+(r.error||'לא זוהה')+'\n';
+        const t=await askType(f.name, r);
+        if(!t){ log.textContent += '  ✗ לא נבחר סוג — הקובץ לא נשמר\n'; continue; }
+        log.textContent += '  נשמר כסוג שנבחר: '+t+'\n';
+        r=await call({action:'prepupload', filename:f.name, b64, type:t});
         if(!r.saved){ log.textContent += '  ✗ '+(r.error||'לא נשמר')+'\n'; continue; }
       }
       log.textContent += '  ✓ '+r.label+' · '+r.rows+' שורות · שנה '+(r.year||'לא ידועה')+(r.year_from==='derived'?' (נגזרת מתחילת עבודה)':'')+' · נשמר כ-'+r.stored_as+(r.trashed?' · '+r.trashed+' גרסאות ישנות לסל':'')+'\n';
@@ -561,7 +590,7 @@ function renderPending(){
     dec.map((d,i)=>'<tr><td>'+(i+1)+'</td><td>'+esc(d.label)+'</td><td>'+esc(d.summary)+'</td><td>'+fmtTs(d.decided_at)+'</td><td><button class="btn sec" data-act="dec-cancel" data-idx="'+i+'">בטל</button></td></tr>').join('')+'</table></div>'
     : '<div class="muted" style="padding:6px 0">אין החלטות ממתינות לביצוע.</div>';
   $('#pend-addr-n').textContent=addr.length; $('#pend-inst-n').textContent=inst.length;
-  const stops=items.filter(i=>i.what==='year'||i.what==='deactivate'||i.what==='error');
+  const stops=items.filter(i=>i.what==='year'||i.what==='deactivate'||i.what==='addrpause'||i.what==='build'||i.what==='error');
   const sug=items.filter(i=>i.what==='suggested'), pause=items.filter(i=>i.what==='pause');
   const dd=items.filter(i=>i.what==='dedupe'), mg=items.filter(i=>i.what==='merge');
   $('#pend-sug-n').textContent=sug.length; $('#pend-pause-n').textContent=pause.length;
@@ -573,16 +602,36 @@ function renderPending(){
     b.style.display = hi ? '' : 'none';
     b.textContent = 'אשר את כל הגבוהים ('+hi+')';
   });
+  /* ── מגזר להכרעה — בנים או בנות, בלי ברירת מחדל ──
+     מוסד בלי מגזר אינו נכנס להגרלה, ומגזר שגוי שולח מפקח למוסד
+     שאסור לו להיכנס אליו. לכן שני כפתורים ואין ״אשר את הגבוהים״. */
+  const kindI=items.filter(i=>i.what==='kindask');
+  $('#pend-kind-n').textContent=kindI.length;
+  $('#pend-kind-note').textContent = kindI.length
+    ? 'מוסד בלי מגזר אינו נכנס להגרלה — הוא מופיע בסיכום החריגות ובקובץ המיוצא, אבל מפקח לא יישלח אליו. המגזר נגזר מקובצי הסייעים; מה שאינו חד-משמעי מגיע לכאן.'
+    : '';
+  $('#pend-kind').innerHTML = kindI.length ? kindI.map((it,idx)=>{
+    const pl=it.payload||{}, pr=it.proposal||{};
+    return '<div class="file" style="margin-bottom:8px">'+
+      '<div class="nm">'+esc(pl.symbol)+' · '+esc(pl.name||'(בלי שם)')+' '+confBadge(pr.confidence)+'</div>'+
+      '<div class="meta">'+(pl.address?esc(pl.address):'בלי כתובת')+(pl.site_id?' <span class="muted">('+esc(pl.site_id)+')</span>':'')+'</div>'+
+      '<div class="meta" style="margin-top:4px"><b>למה:</b> '+esc(pr.reason||'')+'</div>'+
+      '<div class="row" style="margin-top:6px">'+
+        '<button class="btn" data-act="kind-decide" data-c="M" data-idx="'+idx+'">בנים</button>'+
+        '<button class="btn" data-act="kind-decide" data-c="F" data-idx="'+idx+'">בנות</button>'+
+      '</div></div>';
+  }).join('') : '<div class="muted" style="padding:6px 0">אין מוסד בלי מגזר.</div>';
+
   /* ── קובץ הכתובות: חדש · כתובת שהשתנתה · שם · אינו בקובץ ──
      שתי הכתובות זו מול זו, כי זה כל מה שצריך להכריע. */
   const af=items.filter(i=>i.what==='addrfile');
   $('#pend-af-n').textContent=af.length;
   const afK={ new:'מוסד חדש', changed:'כתובת השתנתה', name:'שם שונה', missing:'אינו בקובץ החדש', partial:'הקובץ חלקי' };
   $('#pend-af-note').textContent = af.length
-    ? 'הקובץ העדכני של המחלקה מול מה שבמערכת. עד שהכתובת מאושרת — המערכת שולחת לכתובת הישנה. אישור של ״כתובת השתנתה״ בלי קואורדינטה מאומתת מאפס את הקואורדינטה, והמוסד אינו נשלח עד גיאוקוד.'
+    ? 'הקובץ העדכני של המחלקה מול מה שבמערכת. **מוסד שכתובתו השתנתה מושהה אוטומטית** (״כתובת השתנתה — ממתין לאישור״) ואינו מקבל מפקח; ההשהיה יורדת מעצמה ברגע שהכתובת החדשה אושרה וגואוקדה, וחוזרת אם ההחלטה בוטלה. אישור בלי קואורדינטה מאומתת משאיר את המוסד מושהה.'
     : '';
   $('#pend-af').innerHTML = af.length ? af.map((it,idx)=>{
-    const pl=it.payload||{}, pr=it.proposal||{}, k=pl.kind||'';
+    const pl=it.payload||{}, pr=it.proposal||{}, k=pl.ikind||'';
     const two = (k==='changed'||k==='new'||k==='missing')
       ? '<div class="meta" style="margin-top:4px">'+
           '<b>במערכת:</b> '+(pl.addr_sheet?esc(pl.addr_sheet)+(pl.site_id?' <span class="muted">('+esc(pl.site_id)+')</span>':''):'<b>אין כתובת</b>')+
@@ -635,6 +684,15 @@ function renderPending(){
     if(it.what==='deactivate') return '<div class="strip bad" style="margin-bottom:8px"><div>⛔ בלם ההשבתה: הסנכרון ישבית '+pl.assistants+' סייעות ('+pl.rows+' שורות) — '+esc((pl.lines||[]).join(' · '))+'</div>'+
       '<div class="meta" style="font-weight:400;margin-top:4px">'+esc(pr.reason||'')+'</div>'+
       '<div class="row" style="margin-top:6px"><input class="form-input" id="ps-phrase-'+idx+'" placeholder="הקלד: '+esc(pl.phrase)+'" style="max-width:280px"><button class="btn danger" data-act="stop-deactivate" data-idx="'+idx+'">אשר השבתה</button></div></div>';
+    if(it.what==='build') return '<div class="strip bad" style="margin-bottom:8px"><div>⛔ בלם הבנייה: קובץ הכתובות מוסיף '+pl.n+' מוסדות חדשים ('+pl.sites+' אתרים) לצד '+pl.existing+' קיימים</div>'+
+      '<div class="meta" style="font-weight:400;margin-top:4px">'+esc(pr.reason||'')+'</div>'+
+      (pl.symbols&&pl.symbols.length?'<div class="meta" style="font-weight:400">סמלים: '+pl.symbols.map(esc).join(', ')+'</div>':'')+
+      (pl.no_kind?'<div class="meta" style="font-weight:400">ומהם '+pl.no_kind+' בלי מגזר — יידרשו הכרעה</div>':'')+
+      '<div class="row" style="margin-top:6px"><input class="form-input" id="ps-phrase-'+idx+'" placeholder="הקלד: '+esc(pl.phrase)+'" style="max-width:280px"><button class="btn danger" data-act="stop-build" data-idx="'+idx+'">אשר הוספה</button></div></div>';
+    if(it.what==='addrpause') return '<div class="strip bad" style="margin-bottom:8px"><div>⛔ בלם ההשהיה: הקובץ משנה כתובת ל-'+pl.n+' מוסדות מתוך '+pl.active+' פעילים ('+pl.pct+'%)</div>'+
+      '<div class="meta" style="font-weight:400;margin-top:4px">'+esc(pr.reason||'')+'</div>'+
+      (pl.symbols&&pl.symbols.length?'<div class="meta" style="font-weight:400">סמלים: '+pl.symbols.map(esc).join(', ')+'</div>':'')+
+      '<div class="row" style="margin-top:6px"><input class="form-input" id="ps-phrase-'+idx+'" placeholder="הקלד: '+esc(pl.phrase)+'" style="max-width:280px"><button class="btn danger" data-act="stop-addrpause" data-idx="'+idx+'">אשר השהיה</button> <span class="muted">הכתובות שמשתנות מוצגות למטה בכל מקרה</span></div></div>';
     return '<div class="strip bad" style="margin-bottom:8px"><div>✗ שלב '+pl.n+' · '+esc(pl.label)+' נכשל: '+esc(pl.message)+'</div><div class="meta" style="font-weight:400;margin-top:4px">'+esc(pr.reason||'')+'</div>'+
       '<div class="row" style="margin-top:6px"><button class="btn sec" data-act="stop-error" data-idx="'+idx+'">סמן כנקרא</button></div></div>';
   }).join('');
@@ -717,7 +775,8 @@ document.addEventListener('click', async e=>{
   }
   const items=(state.pending&&state.pending.items)||[];
   const list = act.indexOf('addr-')===0 ? items.filter(i=>i.what==='address')
-             : act.indexOf('stop-')===0 ? items.filter(i=>i.what==='year'||i.what==='deactivate'||i.what==='error')
+             : act==='kind-decide' ? items.filter(i=>i.what==='kindask')
+             : act.indexOf('stop-')===0 ? items.filter(i=>i.what==='year'||i.what==='deactivate'||i.what==='addrpause'||i.what==='build'||i.what==='error')
              : act==='sug-add' ? items.filter(i=>i.what==='suggested')
              : act==='pause-add' ? items.filter(i=>i.what==='pause')
              : act==='dedupe-apply' ? items.filter(i=>i.what==='dedupe')
@@ -726,7 +785,8 @@ document.addEventListener('click', async e=>{
              : items.filter(i=>i.what==='institution');
   const it=list[idx]; if(!it) return;
   const req={action:'prepdecide', what:it.what, key:it.key};
-  if(act==='stop-deactivate'){ req.phrase=$('#ps-phrase-'+idx).value.trim(); if(!req.phrase) return flash('הקלד את המשפט', true); }
+  if(act==='kind-decide') req.choice=b.dataset.c;
+  if(act==='stop-deactivate'||act==='stop-addrpause'||act==='stop-build'){ req.phrase=$('#ps-phrase-'+idx).value.trim(); if(!req.phrase) return flash('הקלד את המשפט', true); }
   if(act==='addr-proposal') req.choice='proposal';
   if(act==='addr-manual'){
     const g=geoVal('pa-geo-'+idx);
@@ -884,6 +944,7 @@ function renderList(){
       '<td>'+(i.has_geo?'יש':'<span class="muted">אין</span>')+'</td>'+
       '<td>'+i.assistants+'</td>'+
       '<td><span class="badge '+(STATE_CLASS[i.state]||'')+'">'+esc(i.state_label)+'</span>'+
+        (i.no_kind?' <span class="badge warn">בלי מגזר</span>':'')+
         (i.state_detail?' <span class="muted">'+esc(i.state_detail)+'</span>':'')+'</td></tr>').join('')+
     '</table></div>'+
     '<div class="muted" style="margin-top:6px">'+rows.length+' שורות'+(f?' מתוך '+l.total:'')+'</div>';
