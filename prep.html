@@ -154,6 +154,10 @@ th{background:#f3f4f6;font-weight:600;position:sticky;top:0}
           <button class="btn" id="btn-run" onclick="runAll(false)">עבד</button>
           <span class="muted" style="font-size:13px">— כל השלבים ברצף, כולל ״טען קיים״ אם המפתחות ריקים. בסוף נפתח ״ממתין להחלטה״. שלב שנחסם או נכשל אינו עוצר את השאר: מה שתלוי בו מחכה ל״המשך״.</span>
         </h2>
+        <div class="row" id="geo-more-row" style="display:none;margin:4px 0 8px">
+          <button class="btn" id="btn-geo-more" onclick="geocodeUntilDone()">המשך גיאוקוד</button>
+          <span class="muted" id="geo-more-note"></span>
+        </div>
         <div class="steps" id="steps"></div>
         <div id="step-result" class="result" style="display:none"></div>
       </div>
@@ -452,10 +456,42 @@ function stepSummary(r){
   if(r.suggested) return r.suggested.length+' מוסדות מוצעים';
   if(r.pending) return r.pending.length+' אתרים בלי קואורדינטה';
   if(r.plan && r.plan.merge) return r.plan.merge.length+' קבוצות לאיחוד · '+(r.plan.skip||[]).length+' מדולגות';
+  if(r.result && r.result.remaining !== undefined) geoMore(r.result.remaining);
   if(r.plan && r.plan.del) return r.plan.del.length+' למחיקה · '+(r.plan.skip||[]).length+' להכרעה';
   if(r.candidates) return (r.paused||[]).length+' בהשהיה · '+r.candidates.length+' מועמדים';
   if(r.result && r.result.ok!==undefined) return 'זוהו '+r.result.ok+' · נכשלו '+r.result.failed+(r.result.from_key?' · מהמפתח '+r.result.from_key:'');
   return 'הושלם';
+}
+
+/* ═══ גיאוקוד עד שנגמר ═══
+   תקציב להרצה בשרת (שורות וזמן), ולכן ההמשכה היא בלקוח: סבב
+   אחרי סבב עד ש-remaining מתאפס או שסבב לא התקדם. */
+function geoMore(remaining){
+  const row=$('#geo-more-row');
+  if(!row) return;
+  row.style.display = remaining ? '' : 'none';
+  $('#geo-more-note').textContent = remaining ? remaining+' כתובות נשארו (תקציב להרצה — מכסת זמן הריצה של גוגל)' : '';
+  state.geoRemaining = remaining||0;
+}
+async function geocodeUntilDone(){
+  const b=$('#btn-geo-more'), note=$('#geo-more-note');
+  b.disabled=true;
+  let total=0, rounds=0;
+  try{
+    for(let i=0;i<20;i++){
+      note.textContent='סבב '+(i+1)+'… '+(total?('גואוקדו '+total+' · '):'')+'נשארו '+(state.geoRemaining||'?');
+      const r=await withStepRetry(()=>call({action:'preprun', step:'geocode'}));
+      const res=(r.steps&&r.steps.geocode&&r.steps.geocode.result)||r.result||{};
+      rounds++;
+      total+=(res.ok||0)+(res.alt||0);
+      state.geoRemaining=res.remaining||0;
+      if(!res.remaining){ note.textContent='הושלם: '+total+' גואוקדו ב-'+rounds+' סבבים'; geoMore(0); break; }
+      if(!res.processed){ note.textContent='הסבב לא התקדם — ייתכן שנגמרה המכסה היומית. נשארו '+res.remaining; break; }
+    }
+    flash('גיאוקוד: '+total+' כתובות ב-'+rounds+' סבבים'+(state.geoRemaining?' · נשארו '+state.geoRemaining:''), false, 9000);
+    await loadStatus();
+  }catch(e){ note.textContent='✗ '+e.message; flash(e.message, true, 9000); }
+  finally{ b.disabled=false; }
 }
 
 /* ═══ העלאה ═══ */
