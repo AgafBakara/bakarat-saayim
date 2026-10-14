@@ -629,6 +629,16 @@ function renderPending(){
   const stops=items.filter(i=>i.what==='year'||i.what==='deactivate'||i.what==='addrpause'||i.what==='build'||i.what==='error');
   const sug=items.filter(i=>i.what==='suggested'), pause=items.filter(i=>i.what==='pause');
   const dd=items.filter(i=>i.what==='dedupe'), mg=items.filter(i=>i.what==='merge');
+  /* **כל קבוצות הפריטים מוכרזות כאן, לפני כל שימוש.** `af`
+     הוכרז למטה ב-`const` ונקרא כאן בלולאת ״אשר את כל הגבוהים״ —
+     TDZ: ״Cannot access 'af' before initialization״. השגיאה
+     נזרקה בתוך `renderPending`, ולכן **כל מה שאחריה לא רונדר**:
+     העצירות (ובהן בלם הבנייה), המגזר, וקובץ הכתובות — כלומר
+     המסך הציג שלושה קטעים ריקים ולא היה איפה להקליד את האישור.
+     הכרזה במקום אחד היא ההגנה; `const` בתוך קטע רינדור היא
+     בדיוק הדפוס שמייצר את זה שוב. */
+  const af=items.filter(i=>i.what==='addrfile');
+  const kindI=items.filter(i=>i.what==='kindask');
   $('#pend-sug-n').textContent=sug.length; $('#pend-pause-n').textContent=pause.length;
   $('#pend-dedupe-n').textContent=dd.length; $('#pend-merge-n').textContent=mg.length;
   /* ״אשר את כל הגבוהים״ — לכל קטע, רק כשיש כאלה. בינוני ו״אין״ נשארים אחד-אחד. */
@@ -641,7 +651,6 @@ function renderPending(){
   /* ── מגזר להכרעה — בנים או בנות, בלי ברירת מחדל ──
      מוסד בלי מגזר אינו נכנס להגרלה, ומגזר שגוי שולח מפקח למוסד
      שאסור לו להיכנס אליו. לכן שני כפתורים ואין ״אשר את הגבוהים״. */
-  const kindI=items.filter(i=>i.what==='kindask');
   $('#pend-kind-n').textContent=kindI.length;
   $('#pend-kind-note').textContent = kindI.length
     ? 'מוסד בלי מגזר אינו נכנס להגרלה — הוא מופיע בסיכום החריגות ובקובץ המיוצא, אבל מפקח לא יישלח אליו. המגזר נגזר מקובצי הסייעים; מה שאינו חד-משמעי מגיע לכאן.'
@@ -660,7 +669,6 @@ function renderPending(){
 
   /* ── קובץ הכתובות: חדש · כתובת שהשתנתה · שם · אינו בקובץ ──
      שתי הכתובות זו מול זו, כי זה כל מה שצריך להכריע. */
-  const af=items.filter(i=>i.what==='addrfile');
   $('#pend-af-n').textContent=af.length;
   const afK={ new:'מוסד חדש', changed:'כתובת השתנתה', name:'שם שונה', missing:'אינו בקובץ החדש', partial:'הקובץ חלקי' };
   $('#pend-af-note').textContent = af.length
