@@ -137,7 +137,7 @@ th{background:#f3f4f6;font-weight:600;position:sticky;top:0}
         <div class="files" id="files"></div>
         <div class="drop" id="drop">גרור לכאן את הקבצים (בנים, בנות, רפואי) או
           <label style="color:var(--navy);text-decoration:underline;cursor:pointer">בחר קבצים<input type="file" id="fileinp" multiple accept=".xlsx,.xls" style="display:none"></label>
-          <div class="muted" style="margin-top:6px">הסוג מזוהה לפי הכותרות. שלוש הגרסאות האחרונות של כל סוג נשמרות בדרייב; הישנות לסל.</div>
+          <div class="muted" style="margin-top:6px">הסוג מזוהה לפי הכותרות — שלושת קובצי הסייעים, <b>וקובץ הכתובות</b> (סמל מוסד · שם המוסד · רחוב · מס׳ בית · עיר). שלוש הגרסאות האחרונות של כל סוג נשמרות בדרייב; הישנות לסל.</div>
         </div>
         <div id="upload-log" class="result" style="display:none"></div>
       </div>
@@ -171,6 +171,9 @@ th{background:#f3f4f6;font-weight:600;position:sticky;top:0}
         <div class="muted">מחליטים פעם אחת. לכל פריט הצעה מוכנה עם הסיבה ורמת הביטחון — ביטחון גבוה קודם; לחיצה אחת מאשרת, או משנים. מה שאושר נכתב למפתח ואינו חוזר — לא כאן ולא כחריגה. ״רענן מהקבצים״ בונה את הרשימה מחדש; כל טעינה מריצה גיאוקוד מחמיר לעד 8 כתובות שטרם נבדקו.</div>
         <div id="pend-meta" class="muted" style="margin-top:6px"></div>
         <div id="pend-seed" style="display:none;margin-top:8px"></div>
+        <h3 style="margin:14px 0 6px">קובץ הכתובות <span class="badge" id="pend-af-n"></span> <button class="btn sec" id="pend-af-all" style="display:none" onclick="approveHigh('addrfile')"></button></h3>
+        <div class="muted" id="pend-af-note"></div>
+        <div id="pend-af"></div>
         <h3 style="margin:14px 0 6px">מוסדות מוצעים <span class="badge" id="pend-sug-n"></span> <button class="btn sec" id="pend-sug-all" style="display:none" onclick="approveHigh('suggested')"></button></h3>
         <div id="pend-sug"></div>
         <h3 style="margin:14px 0 6px">כתובות <span class="badge" id="pend-addr-n"></span> <button class="btn sec" id="pend-addr-all" style="display:none" onclick="approveHigh('address')"></button></h3>
@@ -350,7 +353,16 @@ function renderStatus(){
       '<div class="meta">'+(f.uploaded_at? fmtTs(f.uploaded_at)+' · '+ago(f.uploaded_at) : 'לא הועלה מהמסך')+(stale?' <span class="badge warn">ישן</span>':'')+'</div>'+
       '<div class="meta">'+(f.rows?f.rows+' שורות':'')+(f.year?' · '+esc(f.year):'')+'</div>'+
       (f.name?'<div class="meta" style="direction:ltr;text-align:right">'+esc(f.name)+'</div>':'')+'</div>';
-  }).join('');
+  }).join('') + (function(){
+    /* קובץ הכתובות — אינו פרופיל סייעים, ואינו נכנס לבדיקת פער השנים */
+    const a=s.address_file; if(!a) return '';
+    return '<div class="file"><div class="nm">'+esc(a.label)+' '+
+        (a.source==='uploaded'?'<span class="badge ok">הועלה</span>':a.source==='profile'?'<span class="badge">קובץ קבוע</span>':'<span class="badge bad">אין קובץ</span>')+'</div>'+
+      '<div class="meta">'+(a.uploaded_at? fmtTs(a.uploaded_at)+' · '+ago(a.uploaded_at) : 'לא הועלה מהמסך')+'</div>'+
+      '<div class="meta">'+(a.rows?a.rows+' שורות':'')+(a.symbols?' · '+a.symbols+' סמלים':'')+
+        (Number(a.bad)?' · <span class="badge bad">'+a.bad+' נדחו על כלל הסמל</span>':'')+'</div>'+
+      (a.name?'<div class="meta" style="direction:ltr;text-align:right">'+esc(a.name)+'</div>':'')+'</div>';
+  })();
   renderSteps();
   $('#paused-badge').textContent = (s.paused&&s.paused.symbols||0)+' סמלים';
   if(s.export_at && !$('#export-result').textContent) { $('#export-result').style.display=''; $('#export-result').textContent='הייצוא האחרון: '+fmtTs(s.export_at)+' · '+(s.export_files||0)+' קבצים'; }
@@ -555,12 +567,49 @@ function renderPending(){
   $('#pend-sug-n').textContent=sug.length; $('#pend-pause-n').textContent=pause.length;
   $('#pend-dedupe-n').textContent=dd.length; $('#pend-merge-n').textContent=mg.length;
   /* ״אשר את כל הגבוהים״ — לכל קטע, רק כשיש כאלה. בינוני ו״אין״ נשארים אחד-אחד. */
-  [['pend-sug',sug],['pend-addr',addr],['pend-inst',inst],['pend-pause',pause],['pend-dedupe',dd],['pend-merge',mg]].forEach(([id,list])=>{
+  [['pend-sug',sug],['pend-addr',addr],['pend-inst',inst],['pend-pause',pause],['pend-dedupe',dd],['pend-merge',mg],['pend-af',af]].forEach(([id,list])=>{
     const b=$('#'+id+'-all'); if(!b) return;
     const hi=list.filter(i=>i.proposal&&i.proposal.confidence==='high').length;
     b.style.display = hi ? '' : 'none';
     b.textContent = 'אשר את כל הגבוהים ('+hi+')';
   });
+  /* ── קובץ הכתובות: חדש · כתובת שהשתנתה · שם · אינו בקובץ ──
+     שתי הכתובות זו מול זו, כי זה כל מה שצריך להכריע. */
+  const af=items.filter(i=>i.what==='addrfile');
+  $('#pend-af-n').textContent=af.length;
+  const afK={ new:'מוסד חדש', changed:'כתובת השתנתה', name:'שם שונה', missing:'אינו בקובץ החדש', partial:'הקובץ חלקי' };
+  $('#pend-af-note').textContent = af.length
+    ? 'הקובץ העדכני של המחלקה מול מה שבמערכת. עד שהכתובת מאושרת — המערכת שולחת לכתובת הישנה. אישור של ״כתובת השתנתה״ בלי קואורדינטה מאומתת מאפס את הקואורדינטה, והמוסד אינו נשלח עד גיאוקוד.'
+    : '';
+  $('#pend-af').innerHTML = af.length ? af.map((it,idx)=>{
+    const pl=it.payload||{}, pr=it.proposal||{}, k=pl.kind||'';
+    const two = (k==='changed'||k==='new'||k==='missing')
+      ? '<div class="meta" style="margin-top:4px">'+
+          '<b>במערכת:</b> '+(pl.addr_sheet?esc(pl.addr_sheet)+(pl.site_id?' <span class="muted">('+esc(pl.site_id)+')</span>':''):'<b>אין כתובת</b>')+
+          ' · <b>בקובץ:</b> '+(pl.addr_file?esc(pl.addr_file):'<b>אין כתובת</b>')+
+          (pl.city&&!/^בני\s*ברק$/.test(pl.city)?' <span class="badge bad">עיר: '+esc(pl.city)+'</span>':'')+
+          (pl.lat?' · <span class="badge ok">גואוקד '+esc(pl.lat)+', '+esc(pl.lng)+'</span>':'')+
+        '</div>' : '';
+    const names = (k==='name') ? '<div class="meta" style="margin-top:4px"><b>במערכת:</b> ״'+esc(pl.name_sheet||'')+'״ · <b>בקובץ:</b> ״'+esc(pl.name_file||'')+'״</div>' : '';
+    let main='';
+    if(k==='new') main='<button class="btn" data-act="af-decide" data-c="add" data-idx="'+idx+'">אשר: הוסף למוסדות</button>';
+    else if(k==='changed') main='<button class="btn" data-act="af-decide" data-c="fix" data-idx="'+idx+'">אשר: עדכן כתובת</button>';
+    else if(k==='name') main='<button class="btn" data-act="af-decide" data-c="rename" data-idx="'+idx+'">אשר: עדכן שם</button>';
+    else if(k==='missing') main='<button class="btn danger" data-act="af-decide" data-c="pause" data-idx="'+idx+'">השהה עד בירור</button>';
+    const keep = k==='partial' ? '' : '<button class="btn sec" data-act="af-decide" data-c="keep" data-idx="'+idx+'">השאר כפי שהוא</button>';
+    const geo = (k==='changed'||k==='new') && !pl.lat
+      ? '<span class="muted" style="margin-inline-start:8px">אין קואורדינטה:</span>'+geoField('af-geo-'+idx)+
+        '<a class="muted" href="'+esc(pl.maps||'')+'" target="_blank" rel="noopener noreferrer" style="margin-inline-start:6px">מפות</a>'
+      : '';
+    return '<div class="file" style="margin-bottom:8px">'+
+      '<div class="nm"><span class="badge">'+esc(afK[k]||k)+'</span> '+esc(pl.symbol||'')+' · '+esc(pl.name_file||pl.name_sheet||'')+' '+confBadge(pr.confidence)+
+        (pl.assistants?' <span class="muted">'+pl.assistants+' סייעות</span>':'')+
+        (pl.paused?' <span class="badge warn">בהשהיה: '+esc(pl.paused)+'</span>':'')+'</div>'+
+      two+names+
+      '<div class="meta" style="margin-top:4px"><b>למה:</b> '+esc(pr.reason||'')+'</div>'+
+      '<div class="row" style="margin-top:6px">'+main+keep+geo+'</div></div>';
+  }).join('') : '<div class="muted" style="padding:6px 0">אין פריטים מקובץ הכתובות. הרץ ״עבד״ אחרי העלאת הקובץ.</div>';
+
   /* מחיקה ואיחוד — לא רצים לבד; אישור אחד, ונשמר במפתח */
   $('#pend-dedupe').innerHTML = dd.length ? dd.map((it,idx)=>{
     const pl=it.payload||{}, pr=it.proposal||{};
@@ -673,6 +722,7 @@ document.addEventListener('click', async e=>{
              : act==='pause-add' ? items.filter(i=>i.what==='pause')
              : act==='dedupe-apply' ? items.filter(i=>i.what==='dedupe')
              : act==='merge-apply' ? items.filter(i=>i.what==='merge')
+             : act==='af-decide' ? items.filter(i=>i.what==='addrfile')
              : items.filter(i=>i.what==='institution');
   const it=list[idx]; if(!it) return;
   const req={action:'prepdecide', what:it.what, key:it.key};
@@ -684,6 +734,14 @@ document.addEventListener('click', async e=>{
     req.choice='manual'; req.lat=g.lat; req.lng=g.lng;
   }
   if(act==='addr-site'){ req.choice='site'; req.target_site_id=$('#pa-site-'+idx).value.trim(); if(!req.target_site_id) return flash('חסר site_id', true); }
+  if(act==='af-decide'){
+    req.choice=b.dataset.c;
+    if(req.choice==='fix'||req.choice==='add'){
+      const g=geoVal('af-geo-'+idx);
+      if(g.raw && !g.ok) return flash('לא זוהו שני מספרים בשדה הקואורדינטה', true);
+      if(g.ok){ req.lat=g.lat; req.lng=g.lng; }
+    }
+  }
   if(act==='inst-decide'){
     req.decision=b.dataset.d;
     const sel=$('#pi-id-'+idx);
@@ -986,7 +1044,7 @@ async function cancelAllDecisions(){
 async function approveHigh(what){
   const items=((state.pending&&state.pending.items)||[]).filter(i=>i.what===what&&i.proposal&&i.proposal.confidence==='high');
   if(!items.length) return;
-  const label=({suggested:'מוסדות מוצעים',address:'כתובות',institution:'מוסדות',pause:'מועמדים להשהיה',dedupe:'כפילויות למחיקה',merge:'אתרים לאיחוד'})[what]||what;
+  const label=({suggested:'מוסדות מוצעים',address:'כתובות',institution:'מוסדות',pause:'מועמדים להשהיה',dedupe:'כפילויות למחיקה',merge:'אתרים לאיחוד',addrfile:'קובץ הכתובות'})[what]||what;
   if(!confirm(label+': '+items.length+' פריטים, כולם ביטחון גבוה — אשר?\n\n'+
      items.slice(0,8).map(i=>'· '+((i.payload&&(i.payload.address||((i.payload.symbol||'')+' '+(i.payload.name||''))))||i.key)+' — '+(i.proposal.reason||'')).join('\n')+
      (items.length>8?'\n· … ועוד '+(items.length-8):'')+
