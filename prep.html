@@ -89,6 +89,14 @@ th{background:#f3f4f6;font-weight:600;position:sticky;top:0}
 .geo-note.ok{color:#166534}
 .geo-note.bad{color:var(--danger)}
 .geo-note.dim{color:var(--muted)}
+/* **קואורדינטה מוצגת תמיד מבודדת LTR.** הדף הוא `dir="rtl"`,
+   ו״32.07, 34.84״ הוא שני רצפי ספרות שמפריד ביניהם ", " —
+   פסיק ורווח, שני תווים ניטרליים. לפי כללי ה-bidi (N1/N2) הם
+   נפתרים לכיוון הפסקה, והשניים מוצגים **מימין לשמאל**: המשתמש
+   קורא ״34.84, 32.07״ בעוד המחרוזת עצמה היא ״32.07, 34.84״.
+   כך קואורדינטה תקינה נראית כמוחלפת — ומי שיתקן אותה ״בחזרה״
+   יכתוב קואורדינטה שגויה לאתר אמיתי. */
+.ltr{direction:ltr;unicode-bidi:isolate;display:inline-block}
 .geo-note.dim{color:var(--text-muted);font-weight:400}
 .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .tabs{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap}
@@ -640,7 +648,16 @@ function renderNoGeo(){
       ' · <b>'+((t.sites||0)-(t.sites_no_assistants||0))+' אתרים עם סייעות</b> (אלה שמשנים כיסוי)'+
       ' · '+(t.sites_no_assistants||0)+' בלי סייעות ('+(t.inst_no_assistants||0)+' מוסדות — אינם נבדקים ממילא)'+
       (t.out_of_town?' · '+t.out_of_town+' מחוץ לתחום (אין טעם לגאוקד)':'')+
-      (t.no_address?' · '+t.no_address+' בלי כתובת':'');
+      (t.no_address?' · '+t.no_address+' בלי כתובת':'')+
+      /* **מה שאושר אינו חסר.** ההחלטות אינן נכתבות לגיליון אלא
+         מוחלות בייצוא, ולכן אתר שקיבל קואורדינטה מאושרת נראה
+         בגיליון בדיוק כמו אתר שאין לו — והכרטיס הציג 25
+         אתרים שהוכרעו כחסרים. הם יורדים מרשימת העבודה
+         ונספרים כאן, עם הערכים עצמם למטה. */
+      ((t.decided_sites||0)?'<div style="margin-top:6px"><span class="badge ok">'+t.decided_sites+
+        ' אתרים הוכרעו</span> — קואורדינטה מאושרת ממתינה בתור ('+
+        (t.decided_institutions||0)+' מוסדות · '+(t.decided_assistants||0)+
+        ' סייעות). <b>ייכנסו לקובץ בייצוא הבא</b>, ואינם ברשימה למטה.</div>':'');
     list.innerHTML=(r.sites||[]).length
       ? '<table style="margin-top:10px"><tr><th>כתובת</th><th>מוסדות</th><th>סייעות</th><th>מצב</th><th>הדבקת קואורדינטה</th></tr>'+
         r.sites.map((s,i)=>'<tr><td>'+(s.address?esc(s.address):'<b>אין כתובת</b>')+
@@ -655,6 +672,15 @@ function renderNoGeo(){
             '<button class="btn" data-nogeo="'+i+'" id="nogeo-save-'+i+'">שמור</button></div></td></tr>').join('')+
         '</table>'
       : '<div class="muted">אין אתרים בלי קואורדינטה.</div>';
+    /* הערכים שאושרו — גלויים, כדי שלא ייראה כאילו נעלמו */
+    if((r.decided||[]).length)
+      list.innerHTML += '<details style="margin-top:12px"><summary class="muted">'+
+        r.decided.length+' אתרים עם קואורדינטה מאושרת בתור — הצג</summary>'+
+        '<table style="margin-top:8px"><tr><th>כתובת</th><th>מוסדות</th><th>סייעות</th><th>קואורדינטה שאושרה</th><th>מתי</th></tr>'+
+        r.decided.map(s=>'<tr><td>'+esc(s.address||s.site_id)+'</td>'+
+          '<td class="num-cell">'+s.institutions+'</td><td class="num-cell">'+s.assistants+'</td>'+
+          '<td><span class="ltr">'+esc(String(s.lat))+', '+esc(String(s.lng))+'</span></td>'+
+          '<td class="muted">'+(s.at?fmtTs(s.at):'')+'</td></tr>').join('')+'</table></details>';
   }
   nogeoRestore();
 }
@@ -680,6 +706,14 @@ document.addEventListener('click', async ev=>{
     flash('לא זוהו שני מספרים בשדה הקואורדינטה', true);
     return;
   }
+  /* **אתר שכבר יש לו החלטה ממתינה — אזהרה, לא החלטה כפולה.**
+     המשתמש שחשב שאיבד את עבודתו התחיל להזין מחדש; בלי האזהרה
+     הזו נוצרות שתי החלטות על אותו אתר, והאחרונה גוברת בשקט. */
+  const already=((state.nogeo&&state.nogeo.decided)||[]).filter(x=>x.site_id===s.site_id)[0];
+  if(already && !confirm('לאתר הזה כבר יש קואורדינטה מאושרת שממתינה בתור:\n\n'+
+      already.lat+', '+already.lng+(already.at?'  ('+fmtTs(already.at)+')':'')+'\n\n'+
+      'הערך החדש: '+g.lat+', '+g.lng+'\n\n'+
+      'אישור יחליף את ההחלטה הקודמת. להמשיך?')) return;
   b.disabled=true; const label=b.textContent; b.textContent='שומר…';
   try{
     /* אותה החלטה בדיוק — `sitefix` על האתר, בלי לשנות כתובת */
@@ -944,7 +978,7 @@ function renderPending(){
     const pl=it.payload||{}, pr=it.proposal||{};
     let main='';
     if(pr.type==='site') main='<button class="btn" data-act="addr-proposal" data-idx="'+idx+'">אשר: אותו אתר '+esc(pr.site_id)+'</button>';
-    else if(pr.type==='geocode') main='<button class="btn" data-act="addr-proposal" data-idx="'+idx+'">אשר: '+pr.lat+', '+pr.lng+'</button>';
+    else if(pr.type==='geocode') main='<button class="btn" data-act="addr-proposal" data-idx="'+idx+'">אשר: <span class="ltr">'+pr.lat+', '+pr.lng+'</span></button>';
     else if(pr.geocode_pending) main='<span class="muted">גיאוקוד ירוץ בטעינה הבאה (8 בכל טעינה)</span>';
     else main='<a class="btn sec" href="'+esc(pl.maps||'')+'" target="_blank" rel="noopener noreferrer">פתח במפות</a>';
     return '<div class="file" style="margin-bottom:8px">'+
@@ -1083,15 +1117,16 @@ function geoRender(id){
   if(!raw){ note.className='geo-note dim'; note.textContent=''; return; }
   const g=parseGeo(raw);
   if(g.lat===null){ note.className='geo-note bad'; note.textContent='לא זוהו שני מספרים — הדבק ״32.0859, 34.8272״'; return; }
-  const txt=g.lat+', '+g.lng;
+  /* הזוג מוצג בתוך בידוד LTR, אחרת הוא נקרא הפוך על מסך RTL */
+  const txt='<span class="ltr">'+g.lat+', '+g.lng+'</span>';
+  const say=(cls,tail)=>{ note.className='geo-note '+cls; note.innerHTML=txt+' · '+tail; };
   if(g.lat<31||g.lat>33){
-    note.className='geo-note bad';
-    note.textContent=txt+' · נראה שהחלפת lat ו-lng';
+    say('bad','נראה שהחלפת lat ו-lng');
     if(swap&&g.lng>=31&&g.lng<=33) swap.style.display='';
     return;
   }
-  if(inBB(g.lat,g.lng)){ note.className='geo-note ok'; note.textContent=txt+' · בתוך בני ברק ✓'; }
-  else { note.className='geo-note bad'; note.textContent=txt+' · מחוץ לתחום — בדוק'; }
+  if(inBB(g.lat,g.lng)) say('ok','בתוך בני ברק ✓');
+  else say('bad','מחוץ לתחום — בדוק');
 }
 /** הערך לשליחה. השרת מאמת שוב, ולכן זו נוחות ולא הגנה. */
 function geoVal(id){
@@ -1170,6 +1205,7 @@ function renderList(){
       '<td><span class="badge '+(STATE_CLASS[i.state]||'')+'">'+esc(i.state_label)+'</span>'+
         (i.no_kind?' <span class="badge warn">בלי מגזר</span>':'')+
         (i.mixed?' <span class="badge">מעורב</span>':'')+
+        (i.fix_pending?' <span class="badge ok">קואורדינטה מאושרת בתור</span>':'')+
         (i.state_detail?' <span class="muted">'+esc(i.state_detail)+'</span>':'')+'</td></tr>').join('')+
     '</table></div>'+
     '<div class="muted" style="margin-top:6px">'+rows.length+' שורות'+(f?' מתוך '+l.total:'')+'</div>';
