@@ -490,9 +490,19 @@ async function withStepRetry(fn, st){
   }
 }
 function stepSummary(r){
-  if(r.sync) return 'נכתבו '+r.sync.written+' · נוספו '+r.sync.added+' · הושבתו '+r.sync.deactivated+' · שעות השתנו '+r.sync.changed;
+  /* **מה שהשרת אמר, ולא ניחוש מצורת התשובה.** שרשרת ה-`if`
+     כאן תפסה את שלבים 9 ו-10 בענף הגנרי והדפיסה ״611 תקינות ·
+     undefined נדחו״ — `rows` הוא שורות הקובץ ולא ״תקינות״,
+     ו-`rejected` אינו קיים בהם (`bad_rows`). השרת מרכיב את
+     המשפט ב-`stepDone_`; הענפים נשארים כנפילה לאחור. */
+  if(r.summary) return r.summary;
+  if(r.sync) return 'נכתבו '+r.sync.written+' · נוספו '+r.sync.added+
+    (Number(r.sync.reactivated)?' · חזרו לחיים '+r.sync.reactivated:'')+
+    ' · הושבתו '+r.sync.deactivated+' · שעות השתנו '+r.sync.changed;
   if(r.dry_run) return 'נבדק: '+r.dry_run.rows+' תקינות · '+r.dry_run.rejected+' נדחו';
-  if(r.result && r.result.rows!==undefined) return r.result.rows+' תקינות · '+r.result.rejected+' נדחו';
+  if(r.result && r.result.rows!==undefined)
+    return r.result.rows+' שורות · '+(r.result.rejected!==undefined ? r.result.rejected+' נדחו'
+                                     : r.result.bad_rows!==undefined ? r.result.bad_rows+' סמלים נדחו' : '');
   if(r.suggested) return r.suggested.length+' מוסדות מוצעים';
   if(r.pending) return r.pending.length+' אתרים בלי קואורדינטה';
   if(r.plan && r.plan.merge) return r.plan.merge.length+' קבוצות לאיחוד · '+(r.plan.skip||[]).length+' מדולגות';
