@@ -215,6 +215,19 @@ th{background:#f3f4f6;font-weight:600;position:sticky;top:0}
         <div class="sum-grid" id="sum-grid"></div>
         <div class="drill" id="sum-drill" style="display:none"></div>
       </div>
+      <div class="card">
+        <h2>אתרים בלי קואורדינטה
+          <button class="btn sec" onclick="loadNoGeo()">טען</button>
+          <span class="badge" id="nogeo-badge"></span>
+        </h2>
+        <div class="muted" style="margin-bottom:8px">
+          <b>לפי אתר, לא לפי מוסד.</b> האתר מחזיק את הכתובת ואת הקואורדינטה, והמוסד מצביע אליו —
+          ולכן <b>הדבקה אחת מתקנת את כל המוסדות שעליו</b> (חיי טייב 1 נושא שבעה גנים).
+          ממוין לפי מספר הסייעות: אתר בלי סייעות אינו נבדק ממילא.
+        </div>
+        <div id="nogeo-meta" class="muted"></div>
+        <div id="nogeo-list"></div>
+      </div>
     </div>
 
     <div id="tab-find" style="display:none">
@@ -371,6 +384,11 @@ function renderStatus(){
       '<div class="meta">'+(a.uploaded_at? fmtTs(a.uploaded_at)+' · '+ago(a.uploaded_at) : 'לא הועלה מהמסך')+'</div>'+
       '<div class="meta">'+(a.rows?a.rows+' שורות':'')+(a.symbols?' · '+a.symbols+' סמלים':'')+
         (Number(a.bad)?' · <span class="badge bad">'+a.bad+' נדחו על כלל הסמל</span>':'')+'</div>'+
+      /* **מי נדחה, לא רק כמה.** ״1 נדחו״ אינו ממצא שאפשר
+         לעשות איתו משהו; שורה, סמל ושם — כן. */
+      ((a.bad_list||[]).length?'<div class="meta">'+a.bad_list.map(x=>
+        'שורה '+x.row+': '+(x.symbol?'״'+esc(String(x.symbol))+'״':'(אין סמל)')+
+        (x.name?' · '+esc(x.name):'')+' — '+esc(x.why)).join('<br>')+'</div>':'')+
       /* **איזו לשונית נקראה.** בקובץ יש ״כתובות״ ו״בעייתיים״,
          שתיהן עם סמל ורחוב; ״611 שורות״ בלי שם הלשונית אינו
          אומר שנקראה הנכונה. */
@@ -442,7 +460,12 @@ async function runAll(resume){
         if(r.ok && r.needs_confirm) r=await withStepRetry(()=>call({action:'preprun', step:st.key, force:1, auto:1, confirm:r.needs_confirm}), st);
       }catch(e){ r={ok:false, error: servingLayerError(e) ? 'שכבת ההגשה נכשלה 3 פעמים — לא ידוע אם השלב בוצע; בדוק ביומן (' + st.key + ') ולחץ ״המשך״' : e.message, blocked:'error'}; }
       results[st.key]=r;
-      if(r.ok) setStep(st.key,'done', stepSummary(r), r.dry?'<span class="badge">ניסיון</span>':'<span class="badge ok">הושלם</span>');
+      /* **התווית אומרת מה השלב עשה.** ״ניסיון״ נולדה כשהיה
+         מתג כתיבה; הוא אינו קיים עוד, וכל השלבים רצים באמת —
+         ולכן ״ניסיון״ נראה כאילו שום דבר לא קרה. השרת מחזיר
+         `done_label`: נבדק · חושב · הופק · הושלם. */
+      if(r.ok) setStep(st.key,'done', stepSummary(r),
+        '<span class="badge'+(r.dry?'':' ok')+'">'+esc(r.done_label||'הושלם')+'</span>');
       else if(r.blocked==='year') setStep(st.key,'locked','פער שנים — ממתין להחלטה','<span class="badge bad">ממתין להחלטה</span>');
       else if(r.blocked==='deactivate') setStep(st.key,'locked','בלם ההשבתה — ממתין להחלטה','<span class="badge bad">ממתין להחלטה</span>');
       else setStep(st.key,'locked','נכשל: '+(r.error||r.message||''),'<span class="badge bad">נכשל</span>');
@@ -468,12 +491,15 @@ async function withStepRetry(fn, st){
 }
 function stepSummary(r){
   if(r.sync) return 'נכתבו '+r.sync.written+' · נוספו '+r.sync.added+' · הושבתו '+r.sync.deactivated+' · שעות השתנו '+r.sync.changed;
-  if(r.dry_run) return 'ניסיון: '+r.dry_run.rows+' תקינות · '+r.dry_run.rejected+' נדחו';
+  if(r.dry_run) return 'נבדק: '+r.dry_run.rows+' תקינות · '+r.dry_run.rejected+' נדחו';
   if(r.result && r.result.rows!==undefined) return r.result.rows+' תקינות · '+r.result.rejected+' נדחו';
   if(r.suggested) return r.suggested.length+' מוסדות מוצעים';
   if(r.pending) return r.pending.length+' אתרים בלי קואורדינטה';
   if(r.plan && r.plan.merge) return r.plan.merge.length+' קבוצות לאיחוד · '+(r.plan.skip||[]).length+' מדולגות';
-  if(r.result && r.result.remaining !== undefined) geoMore(r.result.remaining);
+  /* **המצב, לא תוצאת הסבב.** `remaining` הוא ״כמה לא נגעתי
+     בהן בסבב הזה״, ונשאר על המסך גם כשהמצב השתנה — שני
+     מספרים זה לצד זה, כל אחד נכון לרגע אחר. */
+  if(r.result && r.result.remaining !== undefined) geoMore();
   if(r.plan && r.plan.del) return r.plan.del.length+' למחיקה · '+(r.plan.skip||[]).length+' להכרעה';
   if(r.candidates) return (r.paused||[]).length+' בהשהיה · '+r.candidates.length+' מועמדים';
   if(r.result && r.result.ok!==undefined) return 'זוהו '+r.result.ok+' · נכשלו '+r.result.failed+(r.result.from_key?' · מהמפתח '+r.result.from_key:'');
@@ -483,11 +509,12 @@ function stepSummary(r){
 /* ═══ גיאוקוד עד שנגמר ═══
    תקציב להרצה בשרת (שורות וזמן), ולכן ההמשכה היא בלקוח: סבב
    אחרי סבב עד ש-remaining מתאפס או שסבב לא התקדם. */
-function geoMore(remaining){
+function geoMore(){
+  const remaining = (state.status && state.status.geo_pending) || 0;
   const row=$('#geo-more-row');
   if(!row) return;
   row.style.display = remaining ? '' : 'none';
-  $('#geo-more-note').textContent = remaining ? remaining+' כתובות נשארו (תקציב להרצה — מכסת זמן הריצה של גוגל)' : '';
+  $('#geo-more-note').textContent = remaining ? remaining+' כתובות ממתינות לגיאוקוד (אתר עם כתובת, בלי קואורדינטה, בתחום)' : '';
   state.geoRemaining = remaining||0;
 }
 async function geocodeUntilDone(){
@@ -502,8 +529,9 @@ async function geocodeUntilDone(){
       rounds++;
       total+=(res.ok||0)+(res.alt||0);
       state.geoRemaining=res.remaining||0;
-      if(!res.remaining){ note.textContent='הושלם: '+total+' גואוקדו ב-'+rounds+' סבבים'; geoMore(0); break; }
-      if(!res.processed){ note.textContent='הסבב לא התקדם — ייתכן שנגמרה המכסה היומית. נשארו '+res.remaining; break; }
+      if(!res.remaining){ note.textContent='הושלם: '+total+' גואוקדו ב-'+rounds+' סבבים'; await loadStatus(); geoMore(); break; }
+      if(!res.processed){ await loadStatus();
+        note.textContent='הסבב לא התקדם — ייתכן שנגמרה המכסה היומית. ממתינות '+((state.status&&state.status.geo_pending)||0)+' כתובות'; break; }
     }
     flash('גיאוקוד: '+total+' כתובות ב-'+rounds+' סבבים'+(state.geoRemaining?' · נשארו '+state.geoRemaining:''), false, 9000);
     await loadStatus();
@@ -565,6 +593,67 @@ async function uploadFiles(files){
   $('#fileinp').addEventListener('change',e=>{ uploadFiles([...e.target.files]); e.target.value=''; });
 })();
 
+/* ═══ אתרים בלי קואורדינטה — לפי אתר ═══
+   יחידת העבודה היא האתר: הדבקה אחת מתקנת את כל המוסדות שעליו.
+   הסייעות קודם, כי אתר בלי סייעות אינו משנה כיסוי. */
+async function loadNoGeo(){
+  const meta=$('#nogeo-meta'), list=$('#nogeo-list');
+  meta.textContent='טוען…'; list.innerHTML='';
+  try{
+    const r=await call({action:'prepnogeo'});
+    state.nogeo=r;
+    const t=r.totals||{};
+    $('#nogeo-badge').textContent=(t.sites||0)+' אתרים';
+    meta.innerHTML='<b>'+(t.sites||0)+' אתרים</b> · '+(t.institutions||0)+' מוסדות · '+(t.assistants||0)+' סייעות'+
+      ' · <b>'+((t.sites||0)-(t.sites_no_assistants||0))+' אתרים עם סייעות</b> (אלה שמשנים כיסוי)'+
+      ' · '+(t.sites_no_assistants||0)+' בלי סייעות ('+(t.inst_no_assistants||0)+' מוסדות — אינם נבדקים ממילא)'+
+      (t.out_of_town?' · '+t.out_of_town+' מחוץ לתחום (אין טעם לגאוקד)':'')+
+      (t.no_address?' · '+t.no_address+' בלי כתובת':'');
+    list.innerHTML=(r.sites||[]).length
+      ? '<table style="margin-top:10px"><tr><th>כתובת</th><th>מוסדות</th><th>סייעות</th><th>מצב</th><th>הדבקת קואורדינטה</th></tr>'+
+        r.sites.map((s,i)=>'<tr><td>'+(s.address?esc(s.address):'<b>אין כתובת</b>')+
+          (s.maps?' <a href="'+esc(s.maps)+'" target="_blank" rel="noopener noreferrer">מפות</a>':'')+
+          '<div class="muted" style="font-size:12px">'+esc(s.names.join(' · '))+'</div></td>'+
+          '<td class="num-cell">'+s.institutions+'</td>'+
+          '<td class="num-cell"><b>'+s.assistants+'</b></td>'+
+          '<td>'+(s.out_of_town?'<span class="badge warn">מחוץ לתחום</span>'
+                 :s.paused?'<span class="badge bad">'+s.paused+' מושהים</span>'
+                 :'<span class="muted">'+esc((s.status||'טרם נוסה').slice(0,60))+'</span>')+'</td>'+
+          '<td><div class="row">'+geoField('nogeo-geo-'+i)+
+            '<button class="btn" data-nogeo="'+i+'">שמור</button></div></td></tr>').join('')+
+        '</table>'
+      : '<div class="muted">אין אתרים בלי קואורדינטה.</div>';
+  }catch(e){ meta.innerHTML='<div class="err" style="display:block">'+esc(e.message)+'</div>'; }
+}
+document.addEventListener('click', async ev=>{
+  const b=ev.target.closest('[data-nogeo]'); if(!b) return;
+  const i=Number(b.dataset.nogeo), s=((state.nogeo&&state.nogeo.sites)||[])[i]; if(!s) return;
+  const g=geoVal('nogeo-geo-'+i);
+  if(!g.ok) return flash('לא זוהו שני מספרים בשדה הקואורדינטה', true);
+  b.disabled=true;
+  try{
+    /* אותה החלטה בדיוק — `sitefix` על האתר, בלי לשנות כתובת */
+    const r=await call({action:'prepdecide', what:'sitefix', site_id:s.site_id,
+                        name:(s.names[0]||s.site_id), address:s.address, lat:g.lat, lng:g.lng});
+    flash('אושר לאתר '+s.site_id+' — '+s.institutions+' מוסדות ו-'+s.assistants+
+          ' סייעות · ייכלל בקובץ בייצוא · '+(r.summary||''), false, 9000);
+    await loadNoGeo(); await loadStatus();
+  }catch(e){ flash(e.message, true, 9000); b.disabled=false; }
+});
+
+/* פירוט ״ממתין להחלטה״ — כל סוג שאינו אפס, ו״אחר״ להשלמה,
+   כך שהסכום שווה לסך. */
+const PEND_LABELS = { address:'כתובות', institution:'מוסדות', addrfile:'קובץ הכתובות',
+  kindask:'מגזר', suggested:'מוסדות מוצעים', pause:'מועמדים להשהיה',
+  dedupe:'כפילויות', merge:'אתרים לאיחוד', mismatch:'עדות שטח', stops:'עצירות' };
+function pendingBreakdown(p){
+  const parts=[]; let sum=0;
+  Object.keys(PEND_LABELS).forEach(k=>{ const n=p[k]||0; if(n){ parts.push(PEND_LABELS[k]+' '+n); sum+=n; } });
+  const other=(p.total||0)-sum;
+  if(other>0) parts.push('אחר '+other);
+  return parts.length?parts.join(' · '):'אין';
+}
+
 /* ═══ סיכום ═══ */
 async function loadSummary(){
   $('#sum-grid').innerHTML='<div class="muted">טוען…</div>';
@@ -576,13 +665,17 @@ async function loadSummary(){
        שהבאדג׳ בכותרת מציג את הסך — שני מספרים שונים לאותו דבר
        (1,141 מול 741), ואי אפשר לדעת מי מהם נכון. עכשיו: הסך,
        והפירוט בסוגריים. */
+    /* **הפירוט נבנה מהמניין עצמו, ולכן הוא תמיד מסתכם לסך.**
+       קודם הוצגו שלושה סוגים מתוך אחד-עשר (831 מול 778), וזו
+       אותה תקלה בכיוון ההפוך: פירוט שאינו מסתכם מחייב את
+       הקורא להאמין לאחד המספרים. מה שאינו מופיע ברשימה נספר
+       ב״אחר״. */
     if(s.pending) $('#sum-meta').textContent += ' · ממתין להחלטה: '+(s.pending.total||0)+
-      ' (כתובות '+(s.pending.address||0)+' · מוסדות '+(s.pending.institution||0)+
-      (s.pending.addrfile?' · קובץ הכתובות '+s.pending.addrfile:'')+
-      (s.pending.kindask?' · מגזר '+s.pending.kindask:'')+')'+
+      ' ('+pendingBreakdown(s.pending)+')'+
       (s.registry?' · במפתחות: '+s.registry.addresses+' כתובות, '+s.registry.institutions+' מוסדות':'');
     renderSumGrid();
     $('#sum-drill').style.display='none';
+    loadNoGeo();
   }catch(e){ $('#sum-grid').innerHTML='<div class="err" style="display:block">'+esc(e.message)+'</div>'; }
 }
 state.sumView='all';
@@ -1171,12 +1264,12 @@ async function finishAll(){
       geoFail=(r.geo&&r.geo.failed||0);
       fromKey+=(r.geo&&r.geo.from_key||0);
       if(r.stage==='quota'){
-        line('⛔ **נגמרה המכסה היומית של הגיאוקוד.** נשארו '+r.remaining+' אתרים. המתנה לא תעזור היום — המשך מחר ב״השלם הכל״.');
-        flash('נגמרה המכסה היומית של הגיאוקוד — נשארו '+r.remaining, true, 12000);
+        line('⛔ **נגמרה המכסה היומית של הגיאוקוד.** ממתינות '+(r.geo_pending!==undefined?r.geo_pending:r.remaining)+' כתובות. המתנה לא תעזור היום — המשך מחר ב״השלם הכל״.');
+        flash('נגמרה המכסה היומית — ממתינות '+(r.geo_pending!==undefined?r.geo_pending:r.remaining)+' כתובות', true, 12000);
         break;
       }
       if(r.stage==='geocode'){
-        line('  גואוקדו עד כה: '+geoOk+' · נשארו '+r.remaining);
+        line('  גואוקדו עד כה: '+geoOk+' · ממתינות '+(r.geo_pending!==undefined?r.geo_pending:r.remaining));
         continue;
       }
       /* נגמר — ייצוא */
