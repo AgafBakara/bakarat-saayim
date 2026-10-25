@@ -371,6 +371,14 @@ function renderStatus(){
       '<div class="meta">'+(a.uploaded_at? fmtTs(a.uploaded_at)+' · '+ago(a.uploaded_at) : 'לא הועלה מהמסך')+'</div>'+
       '<div class="meta">'+(a.rows?a.rows+' שורות':'')+(a.symbols?' · '+a.symbols+' סמלים':'')+
         (Number(a.bad)?' · <span class="badge bad">'+a.bad+' נדחו על כלל הסמל</span>':'')+'</div>'+
+      /* **איזו לשונית נקראה.** בקובץ יש ״כתובות״ ו״בעייתיים״,
+         שתיהן עם סמל ורחוב; ״611 שורות״ בלי שם הלשונית אינו
+         אומר שנקראה הנכונה. */
+      (a.sheet?'<div class="meta">לשונית שנקראה: <b>'+esc(a.sheet)+'</b></div>':'')+
+      (Number(a.out_city)?'<div class="meta"><span class="badge warn">'+a.out_city+' מחוץ לבני ברק</span> — מושהים ואינם מגואוקדים</div>':'')+
+      (a.problem&&a.problem.rows?'<div class="meta">לשונית ״'+esc(a.problem.name)+'״: <b>'+a.problem.rows+'</b> שורות לידיעה — '+
+        Object.keys(a.problem.by_why||{}).map(k=>esc(k)+' '+a.problem.by_why[k]).join(' · ')+
+        '<br><span class="muted">אינן נקלטות כמוסדות. לרשימה המלאה: הרץ addressProblemReport בעורך.</span></div>':'')+
       (a.name?'<div class="meta" style="direction:ltr;text-align:right">'+esc(a.name)+'</div>':'')+'</div>';
   })();
   renderSteps();
