@@ -383,7 +383,13 @@ function renderStatus(){
   })();
   renderSteps();
   $('#paused-badge').textContent = (s.paused&&s.paused.symbols||0)+' סמלים';
-  if(s.export_at && !$('#export-result').textContent) { $('#export-result').style.display=''; $('#export-result').textContent='הייצוא האחרון: '+fmtTs(s.export_at)+' · '+(s.export_files||0)+' קבצים'; }
+  /* **חותמת הייצוא נקראת מהשרת בכל טעינה.** התנאי היה ״רק אם
+     האלמנט ריק״ — כדי לא לדרוס הודעת ייצוא שרצה — ולכן אחרי
+     ״השלם הכל״ נשארה על המסך החותמת מהטעינה הקודמת: ייצוא
+     שקרה לפני שבוע לצד טבלה עם המספרים של עכשיו. עכשיו:
+     השרת הוא המקור, ופעולה שרצה מסומנת בדגל. */
+  if(s.export_at && !state.exportBusy) { $('#export-result').style.display='';
+    $('#export-result').textContent='הייצוא האחרון: '+fmtTs(s.export_at)+' · '+(s.export_files||0)+' קבצים'; }
   $('#btn-export').textContent='שמור וייצא'+(s.decisions?' ('+s.decisions+' החלטות)':'');
   const pn=(s.pending&&s.pending.total)||0;
   $('#pending-badge').textContent = pn||''; $('#pending-badge').className='badge'+(pn?' bad':'');
@@ -672,7 +678,7 @@ function renderPending(){
      שאסור לו להיכנס אליו. לכן שני כפתורים ואין ״אשר את הגבוהים״. */
   $('#pend-kind-n').textContent=kindI.length;
   $('#pend-kind-note').textContent = kindI.length
-    ? 'מוסד בלי מגזר אינו נכנס להגרלה — הוא מופיע בסיכום החריגות ובקובץ המיוצא, אבל מפקח לא יישלח אליו. המגזר נגזר מקובצי הסייעים; מה שאינו חד-משמעי מגיע לכאן.'
+    ? 'מוסד בלי מגזר אינו נכנס להגרלה. כאן מגיע **רק מה שיש עליו מה להכריע** — סמל שקובצי הסייעים חלוקים עליו. ״בנים ובנות״ בקובץ המחלקה הוא מגזר ״מעורב״ ונכתב אוטומטית; ״לא ידוע״ הוא שאלה למחלקה ויוצא לרשימה (הרץ kindForDepartment בעורך), לא לכאן.'
     : '';
   $('#pend-kind').innerHTML = kindI.length ? kindI.map((it,idx)=>{
     const pl=it.payload||{}, pr=it.proposal||{};
@@ -1008,6 +1014,7 @@ function renderList(){
       '<td>'+i.assistants+'</td>'+
       '<td><span class="badge '+(STATE_CLASS[i.state]||'')+'">'+esc(i.state_label)+'</span>'+
         (i.no_kind?' <span class="badge warn">בלי מגזר</span>':'')+
+        (i.mixed?' <span class="badge">מעורב</span>':'')+
         (i.state_detail?' <span class="muted">'+esc(i.state_detail)+'</span>':'')+'</td></tr>').join('')+
     '</table></div>'+
     '<div class="muted" style="margin-top:6px">'+rows.length+' שורות'+(f?' מתוך '+l.total:'')+'</div>';
@@ -1083,7 +1090,8 @@ function renderFind(){
       it.key_entries.map(k=>'״'+esc(k.name)+'״ ← '+esc(k.decision)+(k.institution_id?' '+esc(k.institution_id):'')+(k.at?' <span class="muted">('+esc(k.at)+')</span>':'')).join(' · ')+'</div>');
     return '<div class="file" style="margin-bottom:10px">'+
       '<div class="nm">'+esc(it.symbol)+' · '+esc(it.name)+' <span class="muted">'+esc(it.institution_id)+'</span> '+
-        (it.kind==='M'?'<span class="badge">בנים</span>':it.kind==='F'?'<span class="badge">בנות</span>':'<span class="badge warn">בלי מגזר</span>')+
+        (it.kind==='M'?'<span class="badge">בנים</span>':it.kind==='F'?'<span class="badge">בנות</span>'
+          :it.kind==='MF'?'<span class="badge ok">מעורב — בנים ובנות</span>':'<span class="badge warn">בלי מגזר</span>')+
         (it.type?' <span class="badge">'+esc(it.type)+'</span>':'')+
         (it.active?'':' <span class="badge warn">מושבת</span>')+
         (it.paused?' <span class="badge bad">בהשהיה: '+esc(it.paused)+'</span>':'')+
@@ -1102,6 +1110,15 @@ function renderFind(){
               PAUSE_REASONS.map(x=>'<option>'+esc(x)+'</option>').join('')+'</select>'+
             '<button class="btn danger" data-fact="pause" data-idx="'+idx+'">השהה</button>')+
         '<span class="muted" style="margin-inline-start:8px">כתובת חדשה בלי קואורדינטה — הקואורדינטה הישנה נמחקת בקובץ, והמוסד אינו נשלח עד גיאוקוד.</span>'+
+      '</div>'+
+      /* **מגזר — החלטה רגילה, ככל השאר.** מוסד מעורב כשיר
+         לשני סוגי המפקחים; מי שרוצה לצמצם מוסד **מסוים**
+         ל״רק בנים״ עושה זאת כאן, וההחלטה מוחלת בייצוא. */
+      '<div class="row" style="margin-top:6px">'+
+        '<span class="muted">מגזר: <b>'+(it.kind==='M'?'בנים':it.kind==='F'?'בנות':it.kind==='MF'?'מעורב — שני סוגי המפקחים':'בלי מגזר — אינו נכנס להגרלה')+'</b></span>'+
+        '<button class="btn sec" data-fact="kind-m" data-idx="'+idx+'">רק בנים</button>'+
+        '<button class="btn sec" data-fact="kind-f" data-idx="'+idx+'">רק בנות</button>'+
+        '<button class="btn sec" data-fact="kind-mf" data-idx="'+idx+'">מעורב</button>'+
       '</div></div>';
   }).join('') : '';
 }
@@ -1121,6 +1138,10 @@ document.addEventListener('click', async ev=>{
     const note=$('#find-note-'+idx).value.trim();
     if(!note) return flash('שחרור מההשהיה מחייב סיבה', true);
     req=Object.assign(req,{what:'unpause', key:it.symbol, symbol:it.symbol, name:it.name, note:note});
+  } else if(act==='kind-m'||act==='kind-f'||act==='kind-mf'){
+    const sec = act==='kind-m'?'M':act==='kind-f'?'F':'MF';
+    req=Object.assign(req,{what:'setkind', institution_id:it.institution_id, symbol:it.symbol,
+                           name:it.name, sector:sec});
   }
   b.disabled=true;
   try{
@@ -1176,6 +1197,9 @@ async function finishAll(){
             '</td><td><a href="'+esc(f.url)+'" target="_blank" rel="noopener noreferrer">הורדה</a></td></tr>').join('')+
           '</table></div><div class="row" style="margin-top:8px"><a class="btn sec" href="'+esc(ex.folder_url||'')+'" target="_blank" rel="noopener noreferrer">פתח את תיקיית הייצוא</a></div>'
         : '';
+      /* החותמת מהתשובה עצמה — לא מהטעינה הקודמת */
+      if(ex.at){ $('#export-result').style.display='';
+        $('#export-result').textContent='הייצוא האחרון: '+fmtTs(ex.at)+' · '+((ex.files||[]).length)+' קבצים'; }
       flash('הושלם: '+geoOk+' גואוקדו · הקבצים בדרייב', false, 10000);
       break;
     }
@@ -1188,6 +1212,7 @@ async function finishAll(){
 async function exportToServer(){
   const btn=$('#btn-export'), box=$('#export-result'), list=$('#export-files');
   btn.disabled=true; btn.textContent='מייצא…';
+  state.exportBusy=true;
   box.style.display=''; box.textContent='מייצא…'; list.innerHTML='';
   try{
     const r=await call({action:'prepexport'});
@@ -1197,9 +1222,10 @@ async function exportToServer(){
         '</td><td><a href="'+esc(f.url)+'" target="_blank" rel="noopener noreferrer">הורדה</a></td></tr>').join('')+
       '</table></div><div class="row" style="margin-top:8px"><a class="btn sec" href="'+esc(r.folder_url)+'" target="_blank" rel="noopener noreferrer">פתח את תיקיית הייצוא</a></div>';
     flash('יוצא: '+r.files.length+' קבצים · '+r.folder, false, 9000);
+    state.exportBusy=false;
     await loadStatus();
   }catch(e){ box.textContent='✗ '+e.message; flash(e.message, true, 9000); }
-  finally{ btn.disabled=false; btn.textContent='שמור וייצא'+((state.status&&state.status.decisions)?' ('+state.status.decisions+' החלטות)':''); }
+  finally{ state.exportBusy=false; btn.disabled=false; btn.textContent='שמור וייצא'+((state.status&&state.status.decisions)?' ('+state.status.decisions+' החלטות)':''); }
 }
 
 /* ביטול קבוצתי: מציג כמה ומה, ומחזיר את כולן ל״ממתין להחלטה״ */

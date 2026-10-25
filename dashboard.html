@@ -1486,6 +1486,8 @@ function roleTag(name){
    לרשומה אחת, ושינוי כתיב פיצל היסטוריה. המזהה הוא המפתח.
    הנרמול זהה ל-normId_ בשרת: אפסים מובילים יורדים כשהערך כולו
    ספרות — ת"ז שהגיליון קלט כמספר איבדה אפס מוביל בצד אחד. */
+/* תווית מגזר אחת לכל הדשבורד — שלושה ערכים, ולא ״M או השאר״. */
+function kindHeb(k){ return k==='M'?'בנים':k==='F'?'בנות/גנים':k==='MF'?'מעורב':'—'; }
 function nid(v){
   const t=String(v===undefined||v===null?'':v).trim();
   return /^\d+$/.test(t) ? String(Number(t)) : t;
@@ -1571,7 +1573,10 @@ function render(){
 /* ══════ מצב קיים ══════ */
 function renderBase(){
   const I=state.data.institutions.filter(i=>i.active), R=state.data.roster, T=state.data.totals||{};
-  const boys=I.filter(i=>i.kind==='M').length, girls=I.filter(i=>i.kind==='F').length;
+  /* **שלושה מגזרים.** ״מעורב״ נספר בנפרד ואינו נבלע ב״בנות
+     וגנים״ — הוא כשיר לשני סוגי המפקחים, וזה נתון שונה. */
+  const boys=I.filter(i=>i.kind==='M').length, girls=I.filter(i=>i.kind==='F').length,
+        mixed=I.filter(i=>i.kind==='MF').length;
   const noGeo=I.filter(i=>!i.geo).length;
   const people=new Set(R.map(r=>nid(r.aid)).filter(Boolean)).size;
   const students=new Set(R.filter(r=>r.student).map(r=>r.student)).size;
@@ -1602,7 +1607,7 @@ function renderBase(){
     + '<div class="split">'
     + countPanel('atype', R, 'סייעים לפי סוג', 'לחץ לרשימת הסייעים')
     + countPanel('type',  I, 'מוסדות לפי סוג', 'לחץ לרשימת המוסדות')
-    + countPanel('kindHe',R.map(r=>({...r,kindHe:r.kind==='M'?'בנים':'בנות וגנים'})),
+    + countPanel('kindHe',R.map(r=>({...r,kindHe:kindHeb(r.kind)})),
                  'שיבוצים לפי מגזר','לחץ לרשימה')
     + '</div>'
     + '<div class="grid2">'
@@ -1638,7 +1643,7 @@ function drillCount(key,val,isInst){
        <tbody>${list.map(i=>{
          const n=W.rosterAll.filter(r=>r.institution===i.name).length;
          return `<tr><td>${esc(i.name)}</td><td class="num-cell">${esc(i.symbol)}</td>
-           <td>${i.kind==='M'?'בנים':'בנות/גנים'}</td><td class="num-cell">${n}</td>
+           <td>${kindHeb(i.kind)}</td><td class="num-cell">${n}</td>
            <td>${i.geo?'<span class="pill p-ok">✓</span>':'<span class="pill p-flag">חסר</span>'}</td></tr>`;
        }).join('')}</tbody></table>`);
   } else {
@@ -1655,7 +1660,7 @@ function instRosterPanel(I,R){
   const rows=I.map(i=>{
     const a=g[i.name]||[], t={};
     a.forEach(x=>t[x.atype]=(t[x.atype]||0)+1);
-    return {name:i.name,kind:i.kind==='M'?'בנים':'בנות/גנים',type:i.type,n:a.length,geo:i.geo,
+    return {name:i.name,kind:kindHeb(i.kind),type:i.type,n:a.length,geo:i.geo,
             det:Object.keys(t).map(k=>k+' '+t[k]).join(' · ')||'—'};
   }).sort((a,b)=>b.n-a.n);
   return `<div class="panel"><h3>מוסדות ופריסת סייעים
@@ -2884,7 +2889,7 @@ function drawUsers(){
       </tr></thead><tbody>${U.map((u,i)=>`<tr>
         <td>${esc(u.name)}</td>
         <td class="num-cell">${esc(u.id)}</td>
-        <td>${u.gender==='M'?'בנים':u.gender==='F'?'בנות/גנים':'—'}</td>
+        <td>${kindHeb(u.gender)}</td>
         <td><input class="form-input" style="padding:7px 10px;font-size:14px;width:100%;min-width:0"
              id="u-name-${i}" value="${esc(u.username)}" placeholder="באנגלית"></td>
         <td><input class="form-input" style="padding:7px 10px;font-size:14px;width:100%;min-width:0"
