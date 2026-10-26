@@ -1305,6 +1305,21 @@ function renderFind(){
       /* **מגזר — החלטה רגילה, ככל השאר.** מוסד מעורב כשיר
          לשני סוגי המפקחים; מי שרוצה לצמצם מוסד **מסוים**
          ל״רק בנים״ עושה זאת כאן, וההחלטה מוחלת בייצוא. */
+      /* ── פיצול אתר ───────────────────────────────────────
+         מתחם אחד עם שתי כניסות. מוצג **רק** כשיש עם מי לחלוק
+         את האתר, ועם מה שקורה לכל צד — כדי שלא תלחץ בלי לראות
+         שאתה מפצל אחד ומשאיר את השני. */
+      ((it.site_shared||[]).length && it.site_id
+        ? '<div class="row" style="margin-top:6px;align-items:flex-start;flex-wrap:wrap">'+
+            '<div style="flex:1 1 100%"><b>מתחם משותף:</b> על האתר '+esc(it.site_id)+' ('+esc(it.address||'אין כתובת')+') יושבים עוד '+
+              it.site_shared.length+' מוסדות — '+it.site_shared.map(x=>esc(x.symbol+' '+x.name)).join(' · ')+
+              '<div class="muted">פיצול ייתן <b>למוסד הזה בלבד</b> אתר נפרד באותה כתובת. '+
+              'הם יישארו על '+esc(it.site_id)+' עם הקואורדינטה הנוכחית, ולא ייגעו. '+
+              'בלי קואורדינטה חדשה המוסד שפוצל אינו נכנס להגרלה עד שתדביק אחת.</div></div>'+
+            geoField('find-split-'+idx, 'קואורדינטת הכניסה החדשה (אופציונלי)')+
+            '<button class="btn danger" data-fact="split" data-idx="'+idx+'">פצל לאתר נפרד</button>'+
+          '</div>'
+        : '')+
       '<div class="row" style="margin-top:6px">'+
         '<span class="muted">מגזר: <b>'+(it.kind==='M'?'בנים':it.kind==='F'?'בנות':it.kind==='MF'?'מעורב — שני סוגי המפקחים':'בלי מגזר — אינו נכנס להגרלה')+'</b></span>'+
         '<button class="btn sec" data-fact="kind-m" data-idx="'+idx+'">רק בנים</button>'+
@@ -1329,6 +1344,16 @@ document.addEventListener('click', async ev=>{
     const note=$('#find-note-'+idx).value.trim();
     if(!note) return flash('שחרור מההשהיה מחייב סיבה', true);
     req=Object.assign(req,{what:'unpause', key:it.symbol, symbol:it.symbol, name:it.name, note:note});
+  } else if(act==='split'){
+    if(!(it.site_shared||[]).length) return flash('על האתר הזה יושב מוסד אחד — אין מה לפצל', true);
+    const g=geoVal('find-split-'+idx);
+    if(g.raw && !g.ok) return flash('לא זוהו שני מספרים בשדה הקואורדינטה', true);
+    if(!confirm('פיצול אתר\n\n״'+it.name+'״ ('+it.symbol+') יקבל אתר נפרד בכתובת '+(it.address||'(אין כתובת)')+'.\n\n'+
+       'נשארים על '+it.site_id+' ולא נוגעים: '+it.site_shared.map(x=>x.symbol+' '+x.name).join(' · ')+'\n\n'+
+       (g.ok?('קואורדינטה לכניסה החדשה: '+g.lat+', '+g.lng)
+            :'**בלי קואורדינטה** — המוסד לא ייכנס להגרלה עד שתדביק אחת.')+'\n\nלהמשיך?')) return;
+    req=Object.assign(req,{what:'sitesplit', institution_id:it.institution_id, name:it.name,
+                           address:it.address, lat:g.lat, lng:g.lng});
   } else if(act==='kind-m'||act==='kind-f'||act==='kind-mf'){
     const sec = act==='kind-m'?'M':act==='kind-f'?'F':'MF';
     req=Object.assign(req,{what:'setkind', institution_id:it.institution_id, symbol:it.symbol,
